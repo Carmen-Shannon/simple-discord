@@ -1,18 +1,18 @@
 package structs
 
 type Team struct {
-	Icon        *string
-	ID          Snowflake
-	Members     []TeamMember
-	Name        string
-	OwnerUserID Snowflake
+	Icon        *string      `json:"icon,omitempty"`
+	ID          Snowflake    `json:"id"`
+	Members     []TeamMember `json:"members"`
+	Name        string       `json:"name"`
+	OwnerUserID Snowflake    `json:"owner_user_id"`
 }
 
 type TeamMember struct {
-	MembershipState MembershipState
-	TeamID          Snowflake
-	User            User
-	Role            string
+	MembershipState MembershipState `json:"membership_state"`
+	TeamID          Snowflake       `json:"team_id"`
+	User            User            `json:"user"`
+	Role            string          `json:"role"`
 }
 
 type MembershipState int

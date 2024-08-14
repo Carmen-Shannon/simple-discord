@@ -16,14 +16,14 @@ const (
 )
 
 type Entitlement struct {
-	ID            Snowflake
-	SKUID         Snowflake
-	ApplicationID Snowflake
-	UserID        *Snowflake
-	Type          EntitlementType
-	Deleted       bool
-	StartsAt      *time.Time
-	EndsAt        *time.Time
-	GuildID       *Snowflake
-	Consumed      *bool
+	ID            Snowflake     `json:"id"`
+	SKUID         Snowflake     `json:"skuid"`
+	ApplicationID Snowflake     `json:"application_id"`
+	UserID        *Snowflake    `json:"user_id,omitempty"`
+	Type          EntitlementType `json:"type"`
+	Deleted       bool          `json:"deleted"`
+	StartsAt      *time.Time    `json:"starts_at,omitempty"`
+	EndsAt        *time.Time    `json:"ends_at,omitempty"`
+	GuildID       *Snowflake    `json:"guild_id,omitempty"`
+	Consumed      *bool         `json:"consumed,omitempty"`
 }

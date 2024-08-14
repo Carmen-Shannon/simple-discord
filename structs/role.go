@@ -1,25 +1,25 @@
 package structs
 
 type Role struct {
-	ID            Snowflake
-	Name          string
-	Color         int
-	IsHoist       bool
-	Icon          *string
-	UnicodeEmoji  *string
-	Position      int
-	Permissions   string
-	IsManaged     bool
-	IsMentionable bool
-	Tags          RoleTags
-	Flags         int
+	ID            Snowflake `json:"id"`
+	Name          string    `json:"name"`
+	Color         int       `json:"color"`
+	IsHoist       bool      `json:"hoist"`
+	Icon          *string   `json:"icon,omitempty"`
+	UnicodeEmoji  *string   `json:"unicode_emoji,omitempty"`
+	Position      int       `json:"position"`
+	Permissions   string    `json:"permissions"`
+	IsManaged     bool      `json:"managed"`
+	IsMentionable bool      `json:"mentionable"`
+	Tags          RoleTags  `json:"tags"`
+	Flags         int       `json:"flags"`
 }
 
 type RoleTags struct {
-	BotID                 *Snowflake
-	Integrationid         *Snowflake
-	PremiumSubscriber     bool
-	SubscriptionListingID *Snowflake
-	AvailableForPurchase  bool
-	GuildConnections      bool
+	BotID                 *Snowflake `json:"bot_id,omitempty"`
+	IntegrationID         *Snowflake `json:"integration_id,omitempty"`
+	PremiumSubscriber     bool       `json:"premium_subscriber"`
+	SubscriptionListingID *Snowflake `json:"subscription_listing_id,omitempty"`
+	AvailableForPurchase  bool       `json:"available_for_purchase"`
+	GuildConnections      bool       `json:"guild_connections"`
 }

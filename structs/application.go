@@ -1,34 +1,34 @@
 package structs
 
 type Application struct {
-	ID                             Snowflake
-	Name                           string
-	Icon                           *string
-	Description                    string
-	RPCOrigins                     []string
-	IsBotPublic                    bool
-	IsBotRequireCodeGrant          bool
-	Bot                            *User
-	TermsOfServiceURL              *string
-	PrivacyPolicyURL               *string
-	Owner                          *User
-	Summary                        string
-	VerifyKey                      string
-	Team                           Team
-	GuildID                        *Snowflake
-	Guild                          *Guild
-	PrimarySKUID                   *Snowflake
-	Slug                           *string
-	CoverImage                     *string
-	Flags                          ApplicationFlag
-	ApproximateGuildCount          int
-	RedirectURIs                   []string
-	InteractionEndpointsURL        *string
-	RoleConnectionsVerificationURL *string
-	Tags                           []string
-	InstallParams                  *InstallParams
-	IntegrationTypesConfig         map[ApplicationIntegrationType]ApplicationIntegrationTypeConfig
-	CustomInstallURL               *string
+	ID                             Snowflake                                                       `json:"id"`
+	Name                           string                                                          `json:"name"`
+	Icon                           *string                                                         `json:"icon,omitempty"`
+	Description                    string                                                          `json:"description"`
+	RPCOrigins                     []string                                                        `json:"rpc_origins,omitempty"`
+	IsBotPublic                    bool                                                            `json:"bot_public"`
+	IsBotRequireCodeGrant          bool                                                            `json:"bot_require_code_grant"`
+	Bot                            *User                                                           `json:"bot,omitempty"`
+	TermsOfServiceURL              *string                                                         `json:"terms_of_service_url,omitempty"`
+	PrivacyPolicyURL               *string                                                         `json:"privacy_policy_url,omitempty"`
+	Owner                          *User                                                           `json:"owner,omitempty"`
+	Summary                        string                                                          `json:"summary"`
+	VerifyKey                      string                                                          `json:"verify_key"`
+	Team                           Team                                                            `json:"team"`
+	GuildID                        *Snowflake                                                      `json:"guild_id,omitempty"`
+	Guild                          *Guild                                                          `json:"guild,omitempty"`
+	PrimarySKUID                   *Snowflake                                                      `json:"primary_sku_id,omitempty"`
+	Slug                           *string                                                         `json:"slug,omitempty"`
+	CoverImage                     *string                                                         `json:"cover_image,omitempty"`
+	Flags                          ApplicationFlag                                                 `json:"flags"`
+	ApproximateGuildCount          int                                                             `json:"approximate_guild_count"`
+	RedirectURIs                   []string                                                        `json:"redirect_uris,omitempty"`
+	InteractionEndpointsURL        *string                                                         `json:"interaction_endpoints_url,omitempty"`
+	RoleConnectionsVerificationURL *string                                                         `json:"role_connections_verification_url,omitempty"`
+	Tags                           []string                                                        `json:"tags,omitempty"`
+	InstallParams                  *InstallParams                                                  `json:"install_params,omitempty"`
+	IntegrationTypesConfig         map[ApplicationIntegrationType]ApplicationIntegrationTypeConfig `json:"integration_types_config,omitempty"`
+	CustomInstallURL               *string                                                         `json:"custom_install_url,omitempty"`
 }
 
 type ApplicationIntegrationType int
@@ -39,7 +39,7 @@ const (
 )
 
 type ApplicationIntegrationTypeConfig struct {
-	OAuth2InstallParams *InstallParams
+	OAuth2InstallParams *InstallParams `json:"oauth2_install_params,omitempty"`
 }
 
 type ApplicationFlag int
@@ -58,8 +58,8 @@ const (
 )
 
 type InstallParams struct {
-	Scopes      []string
-	Permissions Permission
+	Scopes      []string   `json:"scopes"`
+	Permissions Permission `json:"permissions"`
 }
 
 type ApplicationCommandPermissionType int
@@ -71,7 +71,7 @@ const (
 )
 
 type ApplicationCommandPermissions struct {
-	ID Snowflake `json:"id"`
-	Type ApplicationCommandPermissionType `json:"type"`
-	Permission bool `json:"permission"`
+	ID         Snowflake                        `json:"id"`
+	Type       ApplicationCommandPermissionType `json:"type"`
+	Permission bool                             `json:"permission"`
 }

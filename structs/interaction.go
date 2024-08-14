@@ -1,18 +1,18 @@
 package structs
 
 type ResolvedData struct {
-	Users       *map[Snowflake]User
-	Members     *map[Snowflake]GuildMember
-	Roles       *map[Snowflake]Role
-	Channels    *map[Snowflake]Channel
-	Attachments *map[Snowflake]Attachment
+	Users       *map[Snowflake]User        `json:"users,omitempty"`
+	Members     *map[Snowflake]GuildMember `json:"members,omitempty"`
+	Roles       *map[Snowflake]Role        `json:"roles,omitempty"`
+	Channels    *map[Snowflake]Channel     `json:"channels,omitempty"`
+	Attachments *map[Snowflake]Attachment  `json:"attachments,omitempty"`
 }
 
 type InteractionData struct {
-	ID       Snowflake
-	Name     string
-	Type     int
-	Resolved ResolvedData
+	ID       Snowflake    `json:"id"`
+	Name     string       `json:"name"`
+	Type     int          `json:"type"`
+	Resolved ResolvedData `json:"resolved,omitempty"`
 }
 
 type InteractionType int
@@ -54,12 +54,12 @@ const (
 )
 
 type InteractionResponseData struct {
-	TTS             *bool
-	Content         *string
-	Embeds          []Embed
-	AllowedMentions AllowedMentions
-	Flags           MessageFlag
-	Components      MessageComponent
+	TTS             *bool            `json:"tts,omitempty"`
+	Content         *string          `json:"content,omitempty"`
+	Embeds          []Embed          `json:"embeds"`
+	AllowedMentions AllowedMentions  `json:"allowed_mentions"`
+	Flags           MessageFlag      `json:"flags"`
+	Components      MessageComponent `json:"components"`
 }
 
 type Interaction struct {
@@ -85,6 +85,6 @@ type Interaction struct {
 }
 
 type InteractionResponse struct {
-	Type InteractionResponseType
-	Data InteractionResponseData
+	Type InteractionResponseType `json:"type"`
+	Data InteractionResponseData `json:"data"`
 }

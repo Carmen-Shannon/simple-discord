@@ -17,22 +17,22 @@ const (
 )
 
 type Sticker struct {
-	ID          Snowflake
-	PackID      *Snowflake
-	Name        string
-	Description *string
-	Tags        string
-	Asset       string
-	Type        StickerType
-	FormatType  StickerFormatType
-	Available   *bool
-	GuildID     *Snowflake
-	User        *User
-	SortValue   *int
+	ID          Snowflake         `json:"id"`
+	PackID      *Snowflake        `json:"pack_id,omitempty"`
+	Name        string            `json:"name"`
+	Description *string           `json:"description,omitempty"`
+	Tags        string            `json:"tags"`
+	Asset       string            `json:"asset"`
+	Type        StickerType       `json:"type"`
+	FormatType  StickerFormatType `json:"format_type"`
+	Available   *bool             `json:"available,omitempty"`
+	GuildID     *Snowflake        `json:"guild_id,omitempty"`
+	User        *User             `json:"user,omitempty"`
+	SortValue   *int              `json:"sort_value,omitempty"`
 }
 
 type StickerItem struct {
-	ID Snowflake
-	Name string
-	FormatType StickerFormatType
+	ID         Snowflake         `json:"id"`
+	Name       string            `json:"name"`
+	FormatType StickerFormatType `json:"format_type"`
 }

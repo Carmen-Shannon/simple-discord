@@ -1,5 +1,7 @@
 package structs
 
+import "time"
+
 const None = 0
 
 type VerificationLevel int
@@ -93,15 +95,15 @@ const (
 )
 
 type WelcomeScreenChannel struct {
-	ChannelID   Snowflake
-	Description string
-	EmojiID     *Snowflake
-	EmojiName   *string
+	ChannelID   Snowflake  `json:"channel_id"`
+	Description string     `json:"description"`
+	EmojiID     *Snowflake `json:"emoji_id,omitempty"`
+	EmojiName   *string    `json:"emoji_name,omitempty"`
 }
 
 type WelcomeScreen struct {
-	Description     *string
-	WelcomeChannels []WelcomeScreenChannel
+	Description     *string                `json:"description,omitempty"`
+	WelcomeChannels []WelcomeScreenChannel `json:"welcome_channels"`
 }
 
 type Guild struct {
@@ -174,4 +176,52 @@ type GuildApplicationCommandPermissions struct {
 	ApplicationID Snowflake                       `json:"application_id"`
 	GuildID       Snowflake                       `json:"guild_id"`
 	Permissions   []ApplicationCommandPermissions `json:"permissions"`
+}
+
+type GuildIntegrationType string
+
+const (
+	Twitch            GuildIntegrationType = "twitch"
+	Youtube           GuildIntegrationType = "youtube"
+	Discord           GuildIntegrationType = "discord"
+	GuildSubscription GuildIntegrationType = "guild_subscription"
+)
+
+type IntegrationExpireBehavior int
+
+const (
+	RemoveRoleBehavior IntegrationExpireBehavior = 0
+	KickBehavior       IntegrationExpireBehavior = 1
+)
+
+type GuildIntegration struct {
+	ID                Snowflake                  `json:"id"`
+	Name              string                     `json:"name"`
+	Type              GuildIntegrationType       `json:"type"`
+	IsEnabled         bool                       `json:"enabled"`
+	IsSyncing         *bool                      `json:"syncing,omitempty"`
+	RoleID            *Snowflake                 `json:"role_id,omitempty"`
+	EnabledEmoticons  *bool                      `json:"enabled_emoticons,omitempty"`
+	ExpireBehavior    *IntegrationExpireBehavior `json:"expire_behavior,omitempty"`
+	ExpireGracePeriod *int                       `json:"expire_grace_period,omitempty"`
+	User              *User                      `json:"user,omitempty"`
+	Account           IntegrationAccount         `json:"account"`
+	SyncedAt          *time.Time                 `json:"synced_at,omitempty"`
+	SubscriberCount   *int                       `json:"subscriber_count,omitempty"`
+	IsRevoked         *bool                      `json:"revoked,omitempty"`
+	Application       *IntegrationApplication    `json:"application,omitempty"`
+	Scopes            []OAuth2Scope              `json:"scopes"`
+}
+
+type IntegrationAccount struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type IntegrationApplication struct {
+	ID          Snowflake `json:"id"`
+	Name        string    `json:"name"`
+	Icon        *string   `json:"icon,omitempty"`
+	Description string    `json:"description"`
+	Bot         *User     `json:"bot,omitempty"`
 }

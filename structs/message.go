@@ -42,35 +42,35 @@ const (
 )
 
 type MessageActivity struct {
-	Type    MessageActivityType
-	PartyID string
+	Type    MessageActivityType `json:"type"`
+	PartyID string              `json:"party_id"`
 }
 
 type AllowedMentions struct {
-	Parse         []AllowedMentionType
-	Roles         []Snowflake
-	Users         []Snowflake
-	IsRepliedUser bool
+	Parse         []AllowedMentionType `json:"parse"`
+	Roles         []Snowflake          `json:"roles"`
+	Users         []Snowflake          `json:"users"`
+	IsRepliedUser bool                 `json:"replied_user"`
 }
 
 type ReactionCountDetails struct {
-	Burst  int
-	Normal int
+	Burst  int `json:"burst"`
+	Normal int `json:"normal"`
 }
 
 type Reaction struct {
-	Count        int
-	CountDetails ReactionCountDetails
-	IsMe         bool
-	IsMeBurst    bool
-	Emoji        Emoji
-	BurstColors  []string
+	Count        int                  `json:"count"`
+	CountDetails ReactionCountDetails `json:"count_details"`
+	IsMe         bool                 `json:"me"`
+	IsMeBurst    bool                 `json:"me_burst"`
+	Emoji        Emoji                `json:"emoji"`
+	BurstColors  []string             `json:"burst_colors"`
 }
 
 type MessageType struct {
-	Type      string
-	Value     int
-	Deletable bool
+	Type      string `json:"type"`
+	Value     int    `json:"value"`
+	Deletable bool   `json:"deletable"`
 }
 
 func GetMessageType(messageType string) *MessageType {
@@ -160,33 +160,33 @@ const (
 )
 
 type MessageReference struct {
-	Type            MessageReferenceType
-	MessageID       *Snowflake
-	ChannelID       *Snowflake
-	GuildID         *Snowflake
-	FailIfNotExists *bool
+	Type            MessageReferenceType `json:"type"`
+	MessageID       *Snowflake           `json:"message_id,omitempty"`
+	ChannelID       *Snowflake           `json:"channel_id,omitempty"`
+	GuildID         *Snowflake           `json:"guild_id,omitempty"`
+	FailIfNotExists *bool                `json:"fail_if_not_exists,omitempty"`
 }
 
 type MessageSnapshot struct {
-	Message *Message
+	Message *Message `json:"message"`
 }
 
 type MessageInteractionMetadata struct {
-	ID                            Snowflake
-	Type                          InteractionType
-	User                          User
-	AuthorizingIntegrationOwners  map[ApplicationIntegrationType]string
-	OriginalMessageID             *Snowflake
-	InteractedMessageID           *Snowflake
-	TriggeringInteractionMetadata *MessageInteractionMetadata
+	ID                            Snowflake                             `json:"id"`
+	Type                          InteractionType                       `json:"type"`
+	User                          User                                  `json:"user"`
+	AuthorizingIntegrationOwners  map[ApplicationIntegrationType]string `json:"authorizing_integration_owners"`
+	OriginalMessageID             *Snowflake                            `json:"original_message_id,omitempty"`
+	InteractedMessageID           *Snowflake                            `json:"interacted_message_id,omitempty"`
+	TriggeringInteractionMetadata *MessageInteractionMetadata           `json:"triggering_interaction_metadata,omitempty"`
 }
 
 type MessageInteraction struct {
-	ID     Snowflake
-	Type   InteractionType
-	Name   string
-	User   User
-	Member *GuildMember
+	ID     Snowflake       `json:"id"`
+	Type   InteractionType `json:"type"`
+	Name   string          `json:"name"`
+	User   User            `json:"user"`
+	Member *GuildMember    `json:"member,omitempty"`
 }
 
 type MessageComponentType int
@@ -208,99 +208,99 @@ type MessageComponent struct {
 }
 
 type Message struct {
-	ID                   Snowflake
-	ChannelID            Snowflake
-	Author               User
-	Content              string
-	Timestamp            time.Time
-	EditedTimestamp      *time.Time
-	TTS                  bool
-	MentionEveryone      bool
-	Mentions             []User
-	MentionRoles         []Role
-	MentionChannels      []ChannelMention
-	Attachments          []Attachment
-	Embeds               []Embed
-	Reactions            []Reaction
-	Nonce                *string
-	Pinned               bool
-	WebhookID            *Snowflake
-	Type                 MessageType
-	Activity             MessageActivity
-	Application          *Application
-	ApplicationID        *Snowflake
-	Flags                *MessageFlag
-	MessageReference     *MessageReference
-	MessageSnapshots     []MessageSnapshot
-	ReferencedMessage    *Message
-	InteractionMetadata  MessageInteractionMetadata
-	Interaction          MessageInteraction
-	Thread               *Channel
-	Components           []MessageComponent
-	StickerItems         []StickerItem
-	Stickers             []Sticker
-	Position             *int
-	RoleSubscriptionData RoleSubscriptionData
-	Resolved             ResolvedData
-	Poll                 Poll
-	Call                 MessageCall
+	ID                   Snowflake                   `json:"id"`
+	ChannelID            Snowflake                   `json:"channel_id"`
+	Author               User                        `json:"author"`
+	Content              string                      `json:"content"`
+	Timestamp            time.Time                   `json:"timestamp"`
+	EditedTimestamp      *time.Time                  `json:"edited_timestamp,omitempty"`
+	TTS                  bool                        `json:"tts"`
+	MentionEveryone      bool                        `json:"mention_everyone"`
+	Mentions             []User                      `json:"mentions"`
+	MentionRoles         []Role                      `json:"mention_roles"`
+	MentionChannels      []ChannelMention            `json:"mention_channels"`
+	Attachments          []Attachment                `json:"attachments"`
+	Embeds               []Embed                     `json:"embeds"`
+	Reactions            []Reaction                  `json:"reactions"`
+	Nonce                *string                     `json:"nonce,omitempty"`
+	Pinned               bool                        `json:"pinned"`
+	WebhookID            *Snowflake                  `json:"webhook_id,omitempty"`
+	Type                 MessageType                 `json:"type"`
+	Activity             *MessageActivity            `json:"activity,omitempty"`
+	Application          *Application                `json:"application,omitempty"`
+	ApplicationID        *Snowflake                  `json:"application_id,omitempty"`
+	Flags                *MessageFlag                `json:"flags,omitempty"`
+	MessageReference     *MessageReference           `json:"message_reference,omitempty"`
+	MessageSnapshots     []MessageSnapshot           `json:"message_snapshots"`
+	ReferencedMessage    *Message                    `json:"referenced_message,omitempty"`
+	InteractionMetadata  *MessageInteractionMetadata `json:"interaction_metadata,omitempty"`
+	Interaction          *MessageInteraction         `json:"interaction,omitempty"`
+	Thread               *Channel                    `json:"thread,omitempty"`
+	Components           []MessageComponent          `json:"components"`
+	StickerItems         []StickerItem               `json:"sticker_items"`
+	Stickers             []Sticker                   `json:"stickers"` //DEPRECATED: remove in the future
+	Position             *int                        `json:"position,omitempty"`
+	RoleSubscriptionData *RoleSubscriptionData       `json:"role_subscription_data,omitempty"`
+	Resolved             *ResolvedData               `json:"resolved,omitempty"`
+	Poll                 *Poll                       `json:"poll,omitempty"`
+	Call                 *MessageCall                `json:"call,omitempty"`
 }
 
 type MessageCall struct {
-	Participants   []Snowflake
-	EndedTimestamp *time.Time
+	Participants   []Snowflake `json:"participants"`
+	EndedTimestamp *time.Time  `json:"ended_timestamp,omitempty"`
 }
 
 type RoleSubscriptionData struct {
-	RoleSubscriptionListingID Snowflake
-	TierName                  string
-	TotalMonthsSubscribed     int
-	IsRenewal                 bool
+	RoleSubscriptionListingID Snowflake `json:"role_subscription_listing_id"`
+	TierName                  string    `json:"tier_name"`
+	TotalMonthsSubscribed     int       `json:"total_months_subscribed"`
+	IsRenewal                 bool      `json:"is_renewal"`
 }
 
 type ActionRow struct {
-	Type       MessageComponentType
-	Components []MessageComponent
+	Type       MessageComponentType `json:"type"`
+	Components []MessageComponent   `json:"components"`
 }
 
 type ChannelMention struct {
-	ID      Snowflake
-	GuildID Snowflake
-	Type    ChannelType
-	Name    string
+	ID      Snowflake   `json:"id"`
+	GuildID Snowflake   `json:"guild_id"`
+	Type    ChannelType `json:"type"`
+	Name    string      `json:"name"`
 }
 
 type Attachment struct {
-	ID              Snowflake
-	FileName        string
-	Title           *string
-	Description     *string
-	ContentType     *string
-	Size            int
-	URL             string
-	ProxyURL        string
-	Height          *int
-	Width           *int
-	Ephemeral       *bool
-	DurationSeconds *float64
-	Waveform        *string
-	Flags           *AttachmentFlag
+	ID              Snowflake       `json:"id"`
+	FileName        string          `json:"file_name"`
+	Title           *string         `json:"title,omitempty"`
+	Description     *string         `json:"description,omitempty"`
+	ContentType     *string         `json:"content_type,omitempty"`
+	Size            int             `json:"size"`
+	URL             string          `json:"url"`
+	ProxyURL        string          `json:"proxy_url"`
+	Height          *int            `json:"height,omitempty"`
+	Width           *int            `json:"width,omitempty"`
+	Ephemeral       *bool           `json:"ephemeral,omitempty"`
+	DurationSeconds *float64        `json:"duration_seconds,omitempty"`
+	Waveform        *string         `json:"waveform,omitempty"`
+	Flags           *AttachmentFlag `json:"flags,omitempty"`
 }
 
 type Embed struct {
-	Title       *string
-	Type        *EmbedType
-	Description *string
-	URL         *string
-	Timestamp   *time.Time
-	Color       *int
-	Footer      *EmbedFooter
-	Image       *EmbedImage
-	Thumbnail   *EmbedThumbnail
-	Video       *EmbedVideo
-	Provider    *EmbedProvider
-	Author      *EmbedAuthor
-	Fields      *[]EmbedField
+	Title       *string         `json:"title,omitempty"`
+	Type        *EmbedType      `json:"type,omitempty"`
+	Description *string         `json:"description,omitempty"`
+	URL         *string         `json:"url,omitempty"`
+	Timestamp   *time.Time      `json:"timestamp,omitempty"`
+	Color       *int            `json:"color,omitempty"`
+	Footer      *EmbedFooter    `json:"footer,omitempty"`
+	Image       *EmbedImage     `json:"image,omitempty"`
+	Thumbnail   *EmbedThumbnail `json:"thumbnail,omitempty"`
+	Video       *EmbedVideo     `json:"video,omitempty"`
+	Provider    *EmbedProvider  `json:"provider,omitempty"`
+	Author      *EmbedAuthor    `json:"author,omitempty"`
+	Fields      *[]EmbedField   `json:"fields,omitempty"`
 }
 
 type EmbedType string
@@ -315,46 +315,46 @@ const (
 )
 
 type EmbedThumbnail struct {
-	URL      string
-	ProxyURL *string
-	Height   *int
-	Width    *int
+	URL      string  `json:"url"`
+	ProxyURL *string `json:"proxy_url,omitempty"`
+	Height   *int    `json:"height,omitempty"`
+	Width    *int    `json:"width,omitempty"`
 }
 
 type EmbedVideo struct {
-	URl      *string
-	ProxyURL *string
-	Height   *int
-	Width    *int
+	URl      *string `json:"url,omitempty"`
+	ProxyURL *string `json:"proxy_url,omitempty"`
+	Height   *int    `json:"height,omitempty"`
+	Width    *int    `json:"width,omitempty"`
 }
 
 type EmbedImage struct {
-	URL      string
-	ProxyURL *string
-	Height   *int
-	Width    *int
+	URL      string  `json:"url"`
+	ProxyURL *string `json:"proxy_url,omitempty"`
+	Height   *int    `json:"height,omitempty"`
+	Width    *int    `json:"width,omitempty"`
 }
 
 type EmbedProvider struct {
-	Name *string
-	URL  *string
+	Name *string `json:"name,omitempty"`
+	URL  *string `json:"url,omitempty"`
 }
 
 type EmbedAuthor struct {
-	Name         string
-	URL          *string
-	IconURL      *string
-	ProxyIconURL *string
+	Name         string  `json:"name"`
+	URL          *string `json:"url,omitempty"`
+	IconURL      *string `json:"icon_url,omitempty"`
+	ProxyIconURL *string `json:"proxy_icon_url,omitempty"`
 }
 
 type EmbedFooter struct {
-	Text         string
-	IconURL      *string
-	ProxyIconURL *string
+	Text         string  `json:"text"`
+	IconURL      *string `json:"icon_url,omitempty"`
+	ProxyIconURL *string `json:"proxy_icon_url,omitempty"`
 }
 
 type EmbedField struct {
-	Name     string
-	Value    string
-	IsInline *bool
+	Name     string `json:"name"`
+	Value    string `json:"value"`
+	IsInline *bool  `json:"inline,omitempty"`
 }
