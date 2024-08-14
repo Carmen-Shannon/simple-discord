@@ -163,3 +163,8 @@ type GuildPreview struct {
 	Description              *string        `json:"description,omitempty"`
 	Stickers                 []Sticker      `json:"stickers"`
 }
+
+type UnavailableGuild struct {
+	ID          Snowflake `json:"id"`
+	Unavailable bool      `json:"unavailable"`
+}
