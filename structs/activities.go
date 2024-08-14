@@ -13,7 +13,17 @@ const (
 
 type ActivityFlag int
 
-const ()
+const (
+	ActivityInstance            ActivityFlag = 1 << 0
+	ActivityJoin                ActivityFlag = 1 << 1
+	ActivitySpectate            ActivityFlag = 1 << 2
+	ActivityJoinRequest         ActivityFlag = 1 << 3
+	ActivitySync                ActivityFlag = 1 << 4
+	ActivityPlay                ActivityFlag = 1 << 5
+	ActivityPartyPrivacyFriends ActivityFlag = 1 << 6
+	ActivityPartyPrivacyVoice   ActivityFlag = 1 << 7
+	ActivityEmbedded            ActivityFlag = 1 << 8
+)
 
 type Activity struct {
 	Name          string       `json:"name"`
