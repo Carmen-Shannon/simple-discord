@@ -3,25 +3,25 @@ package structs
 import "time"
 
 type VoiceState struct {
-	GuildID                 *Snowflake
-	ChannelID               *Snowflake
-	UserID                  Snowflake
-	Member                  *GuildMember
-	SessionID               string
-	IsDeafened              bool
-	IsMuted                 bool
-	IsSelfDeafened          bool
-	IsSelfMuted             bool
-	IsStreaming             *bool
-	IsVideo                 bool
-	IsSurpressed            bool
-	RequestToSpeakTimestamp *time.Time
+	GuildID                 *Snowflake   `json:"guild_id,omitempty"`
+	ChannelID               *Snowflake   `json:"channel_id,omitempty"`
+	UserID                  Snowflake    `json:"user_id"`
+	Member                  *GuildMember `json:"member,omitempty"`
+	SessionID               string       `json:"session_id"`
+	IsDeafened              bool         `json:"deaf"`
+	IsMuted                 bool         `json:"mute"`
+	IsSelfDeafened          bool         `json:"self_deaf"`
+	IsSelfMuted             bool         `json:"self_mute"`
+	IsStreaming             *bool        `json:"self_stream,omitempty"`
+	IsVideo                 bool         `json:"self_video"`
+	IsSurpressed            bool         `json:"suppress"`
+	RequestToSpeakTimestamp *time.Time   `json:"request_to_speak_timestamp,omitempty"`
 }
 
 type VoiceRegion struct {
-	ID            string
-	Name          string
-	IsOptimal     bool
-	IsDeprecrated bool
-	IsCustom      bool
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	IsOptimal     bool   `json:"optimal"`
+	IsDeprecrated bool   `json:"deprecated"`
+	IsCustom      bool   `json:"custom"`
 }
