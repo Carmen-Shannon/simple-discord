@@ -61,3 +61,17 @@ type InstallParams struct {
 	Scopes      []string
 	Permissions Permission
 }
+
+type ApplicationCommandPermissionType int
+
+const (
+	ApplicationCommandPermissionRole    ApplicationCommandPermissionType = 1
+	ApplicationCommandPermissionUser    ApplicationCommandPermissionType = 2
+	ApplicationCommandPermissionChannel ApplicationCommandPermissionType = 3
+)
+
+type ApplicationCommandPermissions struct {
+	ID Snowflake `json:"id"`
+	Type ApplicationCommandPermissionType `json:"type"`
+	Permission bool `json:"permission"`
+}
