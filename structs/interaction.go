@@ -54,34 +54,34 @@ const (
 )
 
 type InteractionResponseData struct {
-	TTS *bool
-	Content *string
-	Embeds []Embed
+	TTS             *bool
+	Content         *string
+	Embeds          []Embed
 	AllowedMentions AllowedMentions
-	Flags MessageFlag
-	Components MessageComponent
+	Flags           MessageFlag
+	Components      MessageComponent
 }
 
 type Interaction struct {
-	ID                           Snowflake
-	ApplicationID                Snowflake
-	Type                         InteractionType
-	Data                         *InteractionData
-	Guild                        *Guild
-	GuildID                      *Snowflake
-	Channel                      *Channel
-	ChannelID                    *Snowflake
-	Member                       *GuildMember
-	User                         *User
-	Token                        string
-	Version                      int
-	Message                      *Message
-	AppPermissions               string
-	Locale                       *string
-	GuildLocale                  *string
-	Entitlements                 []Entitlement
-	AuthorizingIntegrationOwners map[IntegrationType]string
-	Context                      *ContextType
+	ID                           Snowflake                  `json:"id"`
+	ApplicationID                Snowflake                  `json:"application_id"`
+	Type                         InteractionType            `json:"type"`
+	Data                         *InteractionData           `json:"data,omitempty"`
+	Guild                        *Guild                     `json:"guild,omitempty"`
+	GuildID                      *Snowflake                 `json:"guild_id,omitempty"`
+	Channel                      *Channel                   `json:"channel,omitempty"`
+	ChannelID                    *Snowflake                 `json:"channel_id,omitempty"`
+	Member                       *GuildMember               `json:"member,omitempty"`
+	User                         *User                      `json:"user,omitempty"`
+	Token                        string                     `json:"token"`
+	Version                      int                        `json:"version"`
+	Message                      *Message                   `json:"message,omitempty"`
+	AppPermissions               string                     `json:"app_permissions"`
+	Locale                       *string                    `json:"locale,omitempty"`
+	GuildLocale                  *string                    `json:"guild_locale,omitempty"`
+	Entitlements                 []Entitlement              `json:"entitlements"`
+	AuthorizingIntegrationOwners map[IntegrationType]string `json:"authorizing_integration_owners"`
+	Context                      *ContextType               `json:"context,omitempty"`
 }
 
 type InteractionResponse struct {
