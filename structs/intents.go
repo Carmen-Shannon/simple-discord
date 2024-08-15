@@ -1,27 +1,35 @@
 package structs
 
-type Intents int64
+type Intent int64
 
 const (
-	GuildsIntents                      Intents = 1 << 0
-	GuildMembersIntents                Intents = 1 << 1
-	GuildModerationIntents             Intents = 1 << 2
-	GuildEmojisAndStickersIntens       Intents = 1 << 3
-	GuildIntegrationsIntents           Intents = 1 << 4
-	GuildWebhooksIntents               Intents = 1 << 5
-	GuildInvitesIntents                Intents = 1 << 6
-	GuildVoiceStatesIntents            Intents = 1 << 7
-	GuildPresencesIntents              Intents = 1 << 8
-	GuildMessagesIntents               Intents = 1 << 9
-	GuildMessageReactionsIntents       Intents = 1 << 10
-	GuildMessageTypingIntents          Intents = 1 << 11
-	DirectMessagesIntents              Intents = 1 << 12
-	DirectMessageReactionsIntents      Intents = 1 << 13
-	DirectMessageTypingIntents         Intents = 1 << 14
-	MessageContentIntents              Intents = 1 << 15
-	GuildScheduledEventsIntents        Intents = 1 << 16
-	AutoModerationConfigurationIntents Intents = 1 << 20
-	AutoModerationExecutionIntents     Intents = 1 << 21
-	GuildMessagePollsIntents           Intents = 1 << 24
-	DirectMessagePollsIntents          Intents = 1 << 25
+	GuildsIntent                      Intent = 1 << 0
+	GuildMembersIntent                Intent = 1 << 1
+	GuildModerationIntent             Intent = 1 << 2
+	GuildEmojisAndStickersIntens      Intent = 1 << 3
+	GuildIntegrationsIntent           Intent = 1 << 4
+	GuildWebhooksIntent               Intent = 1 << 5
+	GuildInvitesIntent                Intent = 1 << 6
+	GuildVoiceStatesIntent            Intent = 1 << 7
+	GuildPresencesIntent              Intent = 1 << 8
+	GuildMessagesIntent               Intent = 1 << 9
+	GuildMessageReactionsIntent       Intent = 1 << 10
+	GuildMessageTypingIntent          Intent = 1 << 11
+	DirectMessagesIntent              Intent = 1 << 12
+	DirectMessageReactionsIntent      Intent = 1 << 13
+	DirectMessageTypingIntent         Intent = 1 << 14
+	MessageContentIntent              Intent = 1 << 15
+	GuildScheduledEventsIntent        Intent = 1 << 16
+	AutoModerationConfigurationIntent Intent = 1 << 20
+	AutoModerationExecutionIntent     Intent = 1 << 21
+	GuildMessagePollsIntent           Intent = 1 << 24
+	DirectMessagePollsIntent          Intent = 1 << 25
 )
+
+func GetIntents(intents []Intent) int {
+	var intent int
+	for _, i := range intents {
+		intent |= int(i)
+	}
+	return intent
+}
