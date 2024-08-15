@@ -2,6 +2,7 @@ package structs
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -15,13 +16,7 @@ type Snowflake struct {
 	Increment *uint8     `json:"increment,omitempty"`
 }
 
-func NewSnowflake(id uint64) Snowflake {
-	var sf Snowflake
-	sf.ID = id
-	return sf.deconstructSnowflake()
-}
-
-func (s Snowflake) deconstructSnowflake() Snowflake {
+func (s *Snowflake) deconstructSnowflake() {
 	timestamp := time.UnixMilli(int64((s.ID >> 22) + Epoch))
 	workerID := uint8(s.ID & 0x3E0000 >> 17)
 	processID := uint8(s.ID & 0x1F000 >> 12)
@@ -31,22 +26,21 @@ func (s Snowflake) deconstructSnowflake() Snowflake {
 	s.WorkerID = &workerID
 	s.ProcessID = &processID
 	s.Increment = &increment
-
-	return s
 }
 
 func (s *Snowflake) UnmarshalJSON(data []byte) error {
-	type Alias Snowflake
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(s),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	var id uint64
+	if err := json.Unmarshal(data, &id); err != nil {
 		return err
+	} else if id == 0 {
+		return errors.New("ID cannot be 0")
 	}
-	if s.ID != 0 {
-		*s = s.deconstructSnowflake()
-	}
+
+	s.ID = id
+	s.deconstructSnowflake()
 	return nil
+}
+
+func (s *Snowflake) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.ID)
 }
