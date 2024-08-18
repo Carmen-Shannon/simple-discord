@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -12,13 +13,13 @@ import (
 )
 
 type EventHandler struct {
-	ReceiveHandlers map[string]func(*Session, interface{}) error
-	SendHandlers    map[gateway.GatewayOpCode]func(*Session, interface{}) error
+	NamedHandlers  map[string]func(*Session, gateway.Payload) error
+	OpCodeHandlers map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error
 }
 
 func NewEventHandler() *EventHandler {
 	return &EventHandler{
-		ReceiveHandlers: map[string]func(*Session, interface{}) error{
+		NamedHandlers: map[string]func(*Session, gateway.Payload) error{
 			"HELLO":                     handleHelloEvent,
 			"READY":                     handleReadyEvent,
 			"RESUMED":                   nil, //placeholder
@@ -54,56 +55,59 @@ func NewEventHandler() *EventHandler {
 			"VOICE_SERVER_UPDATE":       nil, //placeholder
 			"WEBHOOKS_UPDATE":           nil, //placeholder
 		},
-		SendHandlers: map[gateway.GatewayOpCode]func(*Session, interface{}) error{
-			gateway.Heartbeat:           handleSendHeartbeatEvent,
+		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
+			gateway.Heartbeat:           nil, //placeholder
+			gateway.Hello:               handleHelloEvent,
 			gateway.Identify:            nil, //placeholder
 			gateway.PresenceUpdate:      nil, //placeholder
 			gateway.VoiceStateUpdate:    nil, //placeholder
 			gateway.Resume:              nil, //placeholder
 			gateway.RequestGuildMembers: nil, //placeholder
+			gateway.HeartbeatACK:        nil, //placeholder
 		},
 	}
 }
 
 func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	if payload.EventName == nil {
-		return nil
+		if handler, ok := e.OpCodeHandlers[payload.OpCode]; ok && handler != nil {
+			if payload.Seq != nil {
+				s.SetSequence(*payload.Seq)
+			}
+			return handler(s, payload)
+		}
+		return errors.New("no handler for opcode")
 	}
-	if handler, ok := e.ReceiveHandlers[*payload.EventName]; ok && handler != nil {
+
+	if handler, ok := e.NamedHandlers[*payload.EventName]; ok && handler != nil {
 		if payload.Seq != nil {
 			s.SetSequence(*payload.Seq)
 		}
-		return handler(s, payload.Data)
+		return handler(s, payload)
 	}
-	return errors.New("no handler for event")
+	return errors.New("no handler for event name")
 }
 
-func handleReadyEvent(s *Session, d interface{}) error {
-	switch d := d.(type) {
-	case receiveevents.ReadyEvent:
-		s.ID = &d.SessionID
-		s.ResumeURL = &d.ResumeGatewayURL
-	default:
+func handleReadyEvent(s *Session, p gateway.Payload) error {
+	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
+		s.ID = &readyEvent.SessionID
+		s.ResumeURL = &readyEvent.ResumeGatewayURL
+	} else {
 		return errors.New("unexpected payload data type")
 	}
 
 	return nil
 }
 
-func handleHelloEvent(s *Session, d interface{}) error {
-	switch d := d.(type) {
-	case receiveevents.HelloEvent:
-		heartbeatInterval := int(d.HeartbeatInterval)
-		*s.HeartbeatACK = heartbeatInterval
-	default:
+func handleHelloEvent(s *Session, p gateway.Payload) error {
+	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
+		heartbeatInterval := int(helloEvent.HeartbeatInterval)
+		s.HeartbeatACK = &heartbeatInterval
+	} else {
 		return errors.New("unexpected payload data type")
 	}
 
 	return startHeartbeatTimer(s)
-}
-
-func handleSendHeartbeatEvent(s *Session, d interface{}) error {
-	return sendHeartbeatEvent(s)
 }
 
 func sendHeartbeatEvent(s *Session) error {
@@ -123,6 +127,8 @@ func sendHeartbeatEvent(s *Session) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("SENDING HEARTBEAT")
 
 	return s.Write(heartbeatData)
 }

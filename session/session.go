@@ -41,8 +41,19 @@ func (s *Session) Listen() error {
 		var payload gateway.Payload
 		if err := json.Unmarshal(msg, &payload); err != nil {
 			fmt.Printf("error parsing message: %v\n", err)
+			fmt.Println(payload.ToString())
 			continue
 		}
+
+		data, err := gateway.NewReceiveEvent(payload)
+		if err != nil {
+			fmt.Printf("error parsing event: %v\n", err)
+			fmt.Println(payload.ToString())
+			continue
+		}
+
+		payload.Data = data
+		fmt.Printf("Received payload type: %T\n", payload.Data)
 
 		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
 			fmt.Printf("error handling event: %v\n", err)
