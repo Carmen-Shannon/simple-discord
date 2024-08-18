@@ -40,7 +40,7 @@ func (p *Payload) UnmarshalJSON(data []byte) error {
 	var temp Payload
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
-	} else if copy(temp, p); err != nil {
+	} else if err := copy(temp, p); err != nil {
 		return err
 	}
 
