@@ -54,7 +54,9 @@ func (p *Payload) MarshalJSON() ([]byte, error) {
 	if err := NewSendEvent(*p); err != nil {
 		return nil, err
 	}
-	return json.Marshal(p)
+
+	type alias Payload
+	return json.Marshal((*alias)(p))
 }
 
 func (p *Payload) ToString() string {
