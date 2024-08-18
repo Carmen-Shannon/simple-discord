@@ -48,6 +48,7 @@ func (s *Session) Listen() error {
 
 		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
 			fmt.Printf("error handling event: %v\n", err)
+			fmt.Println(payload.ToString())
 			continue
 		}
 	}
@@ -124,7 +125,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess := &Session{
 		Conn:         ws,
 		EventHandler: NewEventHandler(),
-		Token: &token,
+		Token:        &token,
 	}
 
 	if err := sess.Identify(token, intents); err != nil {

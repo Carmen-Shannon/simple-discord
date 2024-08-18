@@ -77,6 +77,7 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	}
 	return errors.New("no handler for event")
 }
+
 func handleReadyEvent(s *Session, d interface{}) error {
 	switch d := d.(type) {
 	case receiveevents.ReadyEvent:
