@@ -34,7 +34,7 @@ func (s *Snowflake) UnmarshalJSON(data []byte) error {
 	var id uint64
 	if err := json.Unmarshal(data, &id); err != nil {
 		var strId string
-		if err := json.Unmarshal(data, &id); err != nil {
+		if err := json.Unmarshal(data, &strId); err != nil {
 			return err
 		}
 		id, err = strconv.ParseUint(strId, 10, 64)
