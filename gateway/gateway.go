@@ -3,7 +3,6 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
@@ -36,6 +35,7 @@ type Payload struct {
 	EventName *string       `json:"t,omitempty"`
 }
 
+// wont know if I need this :shrug:
 // func (p *Payload) UnmarshalJSON(data []byte) error {
 // 	type Alias Payload
 // 	var temp Alias
