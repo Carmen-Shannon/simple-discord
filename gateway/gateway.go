@@ -3,7 +3,6 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
-	"reflect"
 
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
@@ -37,12 +36,13 @@ type Payload struct {
 }
 
 func (p *Payload) UnmarshalJSON(data []byte) error {
-	var temp Payload
+	type Alias Payload
+	var temp Alias
 	if err := json.Unmarshal(data, &temp); err != nil {
 		return err
-	} else if err := copy(temp, p); err != nil {
-		return err
 	}
+
+	*p = Payload(temp)
 
 	if err := NewReceiveEvent(*p); err != nil {
 		return err
@@ -55,39 +55,13 @@ func (p *Payload) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	type alias Payload
-	return json.Marshal((*alias)(p))
+	type Alias Payload
+	return json.Marshal((*Alias)(p))
 }
 
 func (p *Payload) ToString() string {
 	jsonData, _ := json.Marshal(p)
 	return string(jsonData)
-}
-
-func copy(src, dest interface{}) error {
-	srcVal := reflect.ValueOf(src)
-	destVal := reflect.ValueOf(dest)
-
-	// Ensure dest is a pointer and is settable
-	if destVal.Kind() != reflect.Ptr || destVal.IsNil() {
-		return errors.New("destination must be a non-nil pointer")
-	}
-
-	destVal = destVal.Elem()
-	srcType := srcVal.Type()
-
-	// Iterate over the fields of the source struct
-	for i := 0; i < srcVal.NumField(); i++ {
-		srcField := srcVal.Field(i)
-		destField := destVal.FieldByName(srcType.Field(i).Name)
-
-		// Ensure the destination field is settable and assignable
-		if destField.IsValid() && destField.CanSet() && srcField.Type().AssignableTo(destField.Type()) {
-			destField.Set(srcField)
-		}
-	}
-
-	return nil
 }
 
 func NewSendEvent(eventData Payload) error {
