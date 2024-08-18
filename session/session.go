@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 
@@ -29,6 +30,7 @@ func (s *Session) Exit() error {
 }
 
 func (s *Session) Listen() error {
+	log.Println("Starting to listen for messages")
 	for {
 		msg, err := s.Read()
 		if err != nil {
