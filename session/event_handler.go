@@ -78,9 +78,9 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 }
 
 func handleHelloEvent(s *Session, d interface{}) error {
-	switch d.(type) {
+	switch d := d.(type) {
 	case receiveevents.HelloEvent:
-		heartbeatInterval := int(d.(receiveevents.HelloEvent).HeartbeatInterval)
+		heartbeatInterval := int(d.HeartbeatInterval)
 		*s.HeartbeatACK = heartbeatInterval
 	default:
 		return errors.New("unexpected payload data type")

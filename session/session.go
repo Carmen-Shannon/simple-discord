@@ -39,6 +39,7 @@ func (s *Session) Listen() {
 			continue
 		} else if err := gateway.NewReceiveEvent(payload); err != nil {
 			fmt.Printf("error parsing data: %v\n", err)
+			fmt.Println(payload.ToString())
 			continue
 		}
 
@@ -112,11 +113,10 @@ func (s *Session) Identify(token string, intents []structs.Intent) error {
 }
 
 func NewSession(token string, intents []structs.Intent) (*Session, error) {
-	ws, err := websocket.Dial(gateway.GatewayURL, "", "http://localhost/")
+	ws, err := dialer()
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Connected to gateway")
 
 	sess := &Session{
 		Conn:         ws,
@@ -130,4 +130,13 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	go sess.Listen()
 
 	return sess, nil
+}
+
+func dialer() (*websocket.Conn, error) {
+	ws, err := websocket.Dial(gateway.GatewayURL, "", "http://localhost/")
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("Connected to gateway")
+	return ws, nil
 }

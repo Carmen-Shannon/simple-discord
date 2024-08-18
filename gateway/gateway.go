@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
+	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 )
 
 const (
@@ -33,6 +33,11 @@ type Payload struct {
 	Data      interface{}   `json:"d"`
 	Seq       *int          `json:"s,omitempty"`
 	EventName *string       `json:"t,omitempty"`
+}
+
+func (p *Payload) ToString() string {
+	jsonData, _ := json.Marshal(p)
+	return string(jsonData)
 }
 
 func NewSendEvent(eventData Payload) error {
