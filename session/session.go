@@ -1,16 +1,13 @@
 package session
 
 import (
-	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
-	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
-	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"math/rand"
 	"runtime"
 	"sync"
-	"time"
+
+	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
+	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"golang.org/x/net/websocket"
@@ -45,63 +42,11 @@ func (s *Session) Listen() {
 			continue
 		}
 
-		if err := s.Eventhandler.HandleEvent(payload); err != nil {
+		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
 			fmt.Printf("error handling event: %v\n", err)
 			continue
 		}
 	}
-}
-
-func (s *Session) StartHeartbeat() error {
-	if s.HeartbeatACK == nil {
-		return errors.New("no heartbeat interval set")
-	}
-
-	ticker := time.NewTicker(time.Duration(*s.HeartbeatACK) * time.Millisecond)
-	go s.heartbeatLoop(ticker)
-	return nil
-}
-
-func (s *Session) heartbeatLoop(ticker *time.Ticker) {
-	if ticker == nil {
-		return
-	}
-
-	firstHeartbeat := true
-
-	for range ticker.C {
-		if firstHeartbeat {
-			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
-			time.Sleep(jitter)
-			firstHeartbeat = false
-		}
-
-		if err := s.Ack(); err != nil {
-			ticker.Stop()
-			return
-		}
-	}
-}
-
-func (s *Session) Ack() error {
-	if s.Conn == nil {
-		return errors.New("connection unavailable")
-	}
-
-	heartbeatEvent := sendevents.HeartbeatEvent{
-		LastSequence: s.HeartbeatACK,
-	}
-	ackPayload := gateway.Payload{
-		OpCode: gateway.Heartbeat,
-		Data:   heartbeatEvent,
-	}
-
-	heartbeatData, err := json.Marshal(ackPayload)
-	if err != nil {
-		return err
-	}
-
-	return s.Write(heartbeatData)
 }
 
 func (s *Session) UpdateSequence(seq int) {
@@ -171,39 +116,18 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("Connected to gateway")
 
 	sess := &Session{
-		Conn: ws,
+		Conn:         ws,
+		EventHandler: NewEventHandler(),
 	}
 
 	if err := sess.Identify(token, intents); err != nil {
 		return nil, err
 	}
 
-	rawResponse, err := sess.Read()
-	if err != nil {
-		return nil, err
-	}
-
-	var helloPayload gateway.Payload
-	if err := json.Unmarshal(rawResponse, &helloPayload); err != nil {
-		return nil, err
-	} else if err := gateway.NewReceiveEvent(helloPayload); err != nil {
-		return nil, err
-	}
-
-	switch helloPayload.Data.(type) {
-	case receiveevents.HelloEvent:
-		heartbeatInterval := int(helloPayload.Data.(receiveevents.HelloEvent).HeartbeatInterval)
-		sess.HeartbeatACK = &heartbeatInterval
-		sess.UpdateSequence(*helloPayload.Seq)
-	default:
-		return nil, errors.New("unexpected payload data type")
-	}
-
-	if err := sess.StartHeartbeat(); err != nil {
-		return nil, err
-	}
+	go sess.Listen()
 
 	return sess, nil
 }
