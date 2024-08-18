@@ -5,60 +5,61 @@ import (
 	"errors"
 	"math/rand"
 	"time"
+
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
-	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
+	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 )
 
 type EventHandler struct {
 	ReceiveHandlers map[string]func(*Session, interface{}) error
-	SendHandlers map[gateway.GatewayOpCode]func(*Session, interface{}) error
+	SendHandlers    map[gateway.GatewayOpCode]func(*Session, interface{}) error
 }
 
 func NewEventHandler() *EventHandler {
 	return &EventHandler{
 		ReceiveHandlers: map[string]func(*Session, interface{}) error{
-			"HELLO":             handleHelloEvent,
-			"READY":             nil, //placeholder
-			"RESUMED":           nil, //placeholder
-			"RECONNECT":         nil, //placeholder
-			"INVALID_SESSION":   nil, //placeholder
-			"CHANNEL_CREATE":    nil, //placeholder
-			"CHANNEL_UPDATE":    nil, //placeholder
-			"CHANNEL_DELETE":    nil, //placeholder
-			"GUILD_CREATE":      nil, //placeholder
-			"GUILD_UPDATE":      nil, //placeholder
-			"GUILD_DELETE":      nil, //placeholder
-			"GUILD_BAN_ADD":     nil, //placeholder
-			"GUILD_BAN_REMOVE":  nil, //placeholder
-			"GUILD_EMOJIS_UPDATE": nil, //placeholder
+			"HELLO":                     handleHelloEvent,
+			"READY":                     handleReadyEvent,
+			"RESUMED":                   nil, //placeholder
+			"RECONNECT":                 nil, //placeholder
+			"INVALID_SESSION":           nil, //placeholder
+			"CHANNEL_CREATE":            nil, //placeholder
+			"CHANNEL_UPDATE":            nil, //placeholder
+			"CHANNEL_DELETE":            nil, //placeholder
+			"GUILD_CREATE":              nil, //placeholder
+			"GUILD_UPDATE":              nil, //placeholder
+			"GUILD_DELETE":              nil, //placeholder
+			"GUILD_BAN_ADD":             nil, //placeholder
+			"GUILD_BAN_REMOVE":          nil, //placeholder
+			"GUILD_EMOJIS_UPDATE":       nil, //placeholder
 			"GUILD_INTEGRATIONS_UPDATE": nil, //placeholder
-			"GUILD_MEMBER_ADD":  nil, //placeholder
-			"GUILD_MEMBER_REMOVE": nil, //placeholder
-			"GUILD_MEMBER_UPDATE": nil, //placeholder
-			"GUILD_MEMBERS_CHUNK": nil, //placeholder
-			"GUILD_ROLE_CREATE":  nil, //placeholder
-			"GUILD_ROLE_UPDATE":  nil, //placeholder
-			"GUILD_ROLE_DELETE":  nil, //placeholder
-			"MESSAGE_CREATE":    nil, //placeholder
-			"MESSAGE_UPDATE":    nil, //placeholder
-			"MESSAGE_DELETE":    nil, //placeholder
-			"MESSAGE_BULK_DELETE": nil, //placeholder
-			"REACTION_ADD":      nil, //placeholder
-			"REACTION_REMOVE":   nil, //placeholder
-			"REACTION_REMOVE_ALL": nil, //placeholder
-			"TYPING_START":      nil, //placeholder
-			"USER_UPDATE":       nil, //placeholder
-			"VOICE_STATE_UPDATE": nil, //placeholder
-			"VOICE_SERVER_UPDATE": nil, //placeholder
-			"WEBHOOKS_UPDATE":   nil, //placeholder
+			"GUILD_MEMBER_ADD":          nil, //placeholder
+			"GUILD_MEMBER_REMOVE":       nil, //placeholder
+			"GUILD_MEMBER_UPDATE":       nil, //placeholder
+			"GUILD_MEMBERS_CHUNK":       nil, //placeholder
+			"GUILD_ROLE_CREATE":         nil, //placeholder
+			"GUILD_ROLE_UPDATE":         nil, //placeholder
+			"GUILD_ROLE_DELETE":         nil, //placeholder
+			"MESSAGE_CREATE":            nil, //placeholder
+			"MESSAGE_UPDATE":            nil, //placeholder
+			"MESSAGE_DELETE":            nil, //placeholder
+			"MESSAGE_BULK_DELETE":       nil, //placeholder
+			"REACTION_ADD":              nil, //placeholder
+			"REACTION_REMOVE":           nil, //placeholder
+			"REACTION_REMOVE_ALL":       nil, //placeholder
+			"TYPING_START":              nil, //placeholder
+			"USER_UPDATE":               nil, //placeholder
+			"VOICE_STATE_UPDATE":        nil, //placeholder
+			"VOICE_SERVER_UPDATE":       nil, //placeholder
+			"WEBHOOKS_UPDATE":           nil, //placeholder
 		},
 		SendHandlers: map[gateway.GatewayOpCode]func(*Session, interface{}) error{
-			gateway.Heartbeat: handleSendHeartbeatEvent,
-			gateway.Identify: nil, //placeholder
-			gateway.PresenceUpdate: nil, //placeholder
-			gateway.VoiceStateUpdate: nil, //placeholder
-			gateway.Resume: nil, //placeholder
+			gateway.Heartbeat:           handleSendHeartbeatEvent,
+			gateway.Identify:            nil, //placeholder
+			gateway.PresenceUpdate:      nil, //placeholder
+			gateway.VoiceStateUpdate:    nil, //placeholder
+			gateway.Resume:              nil, //placeholder
 			gateway.RequestGuildMembers: nil, //placeholder
 		},
 	}
@@ -70,11 +71,22 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	}
 	if handler, ok := e.ReceiveHandlers[*payload.EventName]; ok && handler != nil {
 		if payload.Seq != nil {
-			s.UpdateSequence(*payload.Seq)
+			s.SetSequence(*payload.Seq)
 		}
-        return handler(s, payload.Data)
-    }
-    return errors.New("no handler for event")
+		return handler(s, payload.Data)
+	}
+	return errors.New("no handler for event")
+}
+func handleReadyEvent(s *Session, d interface{}) error {
+	switch d := d.(type) {
+	case receiveevents.ReadyEvent:
+		s.ID = &d.SessionID
+		s.ResumeURL = &d.ResumeGatewayURL
+	default:
+		return errors.New("unexpected payload data type")
+	}
+
+	return nil
 }
 
 func handleHelloEvent(s *Session, d interface{}) error {
@@ -103,7 +115,7 @@ func sendHeartbeatEvent(s *Session) error {
 	}
 	ackPayload := gateway.Payload{
 		OpCode: gateway.Heartbeat,
-		Data: heartbeatEvent,
+		Data:   heartbeatEvent,
 	}
 
 	heartbeatData, err := json.Marshal(ackPayload)

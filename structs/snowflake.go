@@ -3,6 +3,7 @@ package structs
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"time"
 )
 
@@ -29,9 +30,17 @@ func (s *Snowflake) deconstructSnowflake() {
 }
 
 func (s *Snowflake) UnmarshalJSON(data []byte) error {
+	// try to parse the id field as a uint64, if it fails try to parse it as a string
 	var id uint64
 	if err := json.Unmarshal(data, &id); err != nil {
-		return err
+		var strId string
+		if err := json.Unmarshal(data, &id); err != nil {
+			return err
+		}
+		id, err = strconv.ParseUint(strId, 10, 64)
+		if err != nil {
+			return err
+		}
 	} else if id == 0 {
 		return errors.New("ID cannot be 0")
 	}

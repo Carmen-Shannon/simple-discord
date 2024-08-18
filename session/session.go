@@ -19,18 +19,21 @@ type Session struct {
 	HeartbeatACK *int
 	Sequence     *int
 	EventHandler *EventHandler
+	ID           *string
+	ResumeURL    *string
+	Token        *string
 }
 
 func (s *Session) Exit() error {
 	return s.Conn.Close()
 }
 
-func (s *Session) Listen() {
+func (s *Session) Listen() error {
 	for {
 		msg, err := s.Read()
 		if err != nil {
 			fmt.Printf("error reading message: %v\n", err)
-			continue
+			return err
 		}
 
 		var payload gateway.Payload
@@ -50,7 +53,7 @@ func (s *Session) Listen() {
 	}
 }
 
-func (s *Session) UpdateSequence(seq int) {
+func (s *Session) SetSequence(seq int) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -121,6 +124,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess := &Session{
 		Conn:         ws,
 		EventHandler: NewEventHandler(),
+		Token: &token,
 	}
 
 	if err := sess.Identify(token, intents); err != nil {
