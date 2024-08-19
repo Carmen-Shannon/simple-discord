@@ -1,5 +1,9 @@
 package structs
 
+type GetGatewayResponse struct {
+	URL string `json:"url"`
+}
+
 type GetGatewayBotResponse struct {
 	URL               string            `json:"url"`
 	Shards            int               `json:"shards"`

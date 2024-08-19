@@ -30,7 +30,7 @@ func NewEventHandler() *EventHandler {
 			"CHANNEL_CREATE":            nil, //placeholder
 			"CHANNEL_UPDATE":            nil, //placeholder
 			"CHANNEL_DELETE":            nil, //placeholder
-			"GUILD_CREATE":              nil, //placeholder
+			"GUILD_CREATE":              handleGuildCreateEvent,
 			"GUILD_UPDATE":              nil, //placeholder
 			"GUILD_DELETE":              nil, //placeholder
 			"GUILD_BAN_ADD":             nil, //placeholder
@@ -65,7 +65,7 @@ func NewEventHandler() *EventHandler {
 			gateway.Resume:              nil, //placeholder
 			gateway.RequestGuildMembers: nil, //placeholder
 			gateway.Hello:               handleHelloEvent,
-			gateway.HeartbeatACK:        nil, //placeholder
+			gateway.HeartbeatACK:        handleHeartbeatACKEvent, //placeholder
 		},
 	}
 }
@@ -113,7 +113,24 @@ func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
 		return err
 	}
 
-	return s.Write(identifyData)
+	s.Write(identifyData)
+	return nil
+}
+
+func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING GUILD CREATE EVENT")
+	if guildCreateEvent, ok := p.Data.(receiveevents.GuildCreateEvent); ok {
+		fmt.Printf("GUILD CREATED: %v\n", guildCreateEvent.ID)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+
+	return nil
+}
+
+func handleHeartbeatACKEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING HEARTBEAT ACK EVENT")
+	return nil
 }
 
 func handleReadyEvent(s *Session, p gateway.Payload) error {
@@ -121,7 +138,7 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
-		fmt.Printf("successfully connected to gateway Bot ID: %v", *s.GetID())
+		fmt.Printf("successfully connected to gateway Bot ID: %v\n", *s.GetID())
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -171,8 +188,8 @@ func sendHeartbeatEvent(s *Session) error {
 	}
 
 	fmt.Println("SENDING HEARTBEAT")
-
-	return s.Write(heartbeatData)
+	s.Write(heartbeatData)
+	return nil
 }
 
 func heartbeatLoop(ticker *time.Ticker, s *Session) {

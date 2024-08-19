@@ -2,8 +2,10 @@ package session
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -37,19 +39,20 @@ func (s *Session) Exit() error {
 	return s.Conn.Close()
 }
 
-func (s *Session) Listen() error {
+func (s *Session) Listen() {
 	log.Println("Starting to listen for messages")
 	for msg := range s.readChan {
 		var payload gateway.Payload
+		fmt.Printf("New message received: %s\n", string(msg))
 		if err := json.Unmarshal(msg, &payload); err != nil {
-			fmt.Printf("error parsing message: %v\n", err)
+			s.errorChan <- fmt.Errorf("error parsing message: %v", err)
 			fmt.Println(payload.ToString())
 			continue
 		}
 
 		data, err := gateway.NewReceiveEvent(payload)
 		if err != nil {
-			fmt.Printf("error parsing event: %v\n", err)
+			s.errorChan <- fmt.Errorf("error parsing event: %v", err)
 			fmt.Println(payload.ToString())
 			continue
 		}
@@ -63,52 +66,78 @@ func (s *Session) Listen() error {
 		}
 
 		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
-			fmt.Printf("error handling event: %v\n", err)
+			s.errorChan <- fmt.Errorf("error handling event: %v", err)
 			fmt.Println(payload.ToString())
 			continue
 		}
 	}
-	return nil
 }
 
-func (s *Session) handleRead() error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
+func (s *Session) handleRead() {
+	var buffers [][]byte
 
-	var msg []byte
-	buffer := make([]byte, 512)
 	for {
-		n, err := s.Conn.Read(buffer)
+		tempBuffer := make([]byte, 1024)
+		n, err := s.Conn.Read(tempBuffer)
 		if err != nil {
-			return err
+			if err == io.EOF {
+				break
+			}
+			s.errorChan <- err
+			continue
 		}
 
-		msg = append(msg, buffer[:n]...)
-		if n < len(buffer) {
-			break
+		buffers = append(buffers, tempBuffer[:n])
+
+		for {
+			combinedBuffer := bytes.Join(buffers, nil)
+			decoder := json.NewDecoder(bytes.NewReader(combinedBuffer))
+			var msg json.RawMessage
+			startOffset := len(combinedBuffer)
+
+			if err := decoder.Decode(&msg); err != nil {
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					// incomplete message
+					break
+				}
+				s.errorChan <- fmt.Errorf("error decoding raw message: %v", err)
+				buffers = nil
+				break
+			}
+
+			s.readChan <- msg
+
+			offset := startOffset - int(decoder.InputOffset())
+			if offset > 0 && offset <= len(combinedBuffer) {
+				remainingData := combinedBuffer[decoder.InputOffset():]
+				buffers = [][]byte{remainingData}
+			} else {
+				buffers = nil
+			}
 		}
 	}
-
-	s.readChan <- msg
-	return nil
 }
 
-func (s *Session) Write(data []byte) error {
-	select {
-	case s.writeChan <- data:
-		return nil
-	default:
-		return fmt.Errorf("failed to write data to write channel")
+func (s *Session) Write(data []byte) {
+	if len(s.writeChan) < cap(s.writeChan) {
+		s.writeChan <- data
+	} else {
+		s.errorChan <- fmt.Errorf("failed to write data to write channel")
 	}
 }
 
 func (s *Session) handleWrite() {
 	for data := range s.writeChan {
-		s.Mu.Lock()
+		fmt.Printf("WRITING DATA: %s\n", string(data))
 		if _, err := s.Conn.Write(data); err != nil {
-			fmt.Printf("error writing to connection: %v\n", err)
+			s.errorChan <- err
 		}
-		s.Mu.Unlock()
+	}
+}
+
+func (s *Session) handleError() {
+	for err := range s.errorChan {
+		log.Printf("error: %v\n", err)
 	}
 }
 
@@ -129,19 +158,9 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.errorChan = make(chan error)
 
 	go sess.Listen()
-    go func() {
-        if err := sess.handleRead(); err != nil {
-            sess.errorChan <- err // Send error to the channel
-        }
-    }()
-    go sess.handleWrite()
-
-    // Listen for errors in a separate goroutine
-    go func() {
-        for err := range sess.errorChan {
-            log.Printf("error in handleRead: %v\n", err)
-        }
-    }()
+	go sess.handleRead()
+	go sess.handleWrite()
+	go sess.handleError()
 
 	<-sess.helloReceived
 
@@ -169,15 +188,17 @@ func getGatewayUrl(token string) (string, error) {
 		"Authorization": "Bot " + token,
 		"User-Agent":    fmt.Sprintf("DiscordBot (%s, %s)", botUrl, botVersion),
 	}
-	resp, err := requestutil.HttpRequest("GET", "/gateway/bot", headers, nil)
+	resp, err := requestutil.HttpRequest("GET", "/gateway", headers, nil)
 	if err != nil {
 		return "", err
 	}
 
-	var gatewayResponse structs.GetGatewayBotResponse
+	var gatewayResponse structs.GetGatewayResponse
 	if err := json.Unmarshal(resp, &gatewayResponse); err != nil {
 		return "", err
 	}
+
+	fmt.Println(gatewayResponse.URL)
 
 	return gatewayResponse.URL, nil
 }
