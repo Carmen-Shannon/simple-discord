@@ -12,6 +12,28 @@ type HelloEvent struct {
 	HeartbeatInterval int64 `json:"heartbeat_interval"`
 }
 
+type HeartbeatEvent struct {
+	LastSequence *int `json:"-"`
+}
+
+func (h *HeartbeatEvent) UnmarshalJSON(data []byte) error {
+	var sequence int
+	if err := json.Unmarshal(data, &sequence); err == nil {
+		h.LastSequence = &sequence
+		return nil
+	}
+
+	return errors.New("unable to unmarshal HeartbeatEvent struct")
+}
+
+func (h *HeartbeatEvent) MarshalJSON() ([]byte, error) {
+	if h.LastSequence == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(*h.LastSequence)
+}
+
 type HeartbeatACKEvent struct{}
 
 type ReadyEvent struct {

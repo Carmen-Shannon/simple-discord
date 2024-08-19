@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"time"
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
+	"github.com/Carmen-Shannon/simple-discord/structs"
 )
 
 type EventHandler struct {
@@ -56,13 +58,13 @@ func NewEventHandler() *EventHandler {
 			"WEBHOOKS_UPDATE":           nil, //placeholder
 		},
 		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
-			gateway.Heartbeat:           nil, //placeholder
-			gateway.Hello:               handleHelloEvent,
-			gateway.Identify:            nil, //placeholder
+			gateway.Heartbeat:           handleHeartbeatEvent,
+			gateway.Identify:            handleSendIdentifyEvent,
 			gateway.PresenceUpdate:      nil, //placeholder
 			gateway.VoiceStateUpdate:    nil, //placeholder
 			gateway.Resume:              nil, //placeholder
 			gateway.RequestGuildMembers: nil, //placeholder
+			gateway.Hello:               handleHelloEvent,
 			gateway.HeartbeatACK:        nil, //placeholder
 		},
 	}
@@ -70,9 +72,10 @@ func NewEventHandler() *EventHandler {
 
 func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	if payload.EventName == nil {
+		fmt.Printf("HANDLING OPCODE EVENT: %v\n", payload.OpCode)
 		if handler, ok := e.OpCodeHandlers[payload.OpCode]; ok && handler != nil {
 			if payload.Seq != nil {
-				s.SetSequence(*payload.Seq)
+				s.SetSequence(payload.Seq)
 			}
 			return handler(s, payload)
 		}
@@ -80,18 +83,45 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	}
 
 	if handler, ok := e.NamedHandlers[*payload.EventName]; ok && handler != nil {
+		fmt.Printf("HANDLING NAMED EVENT: %v\n", *payload.EventName)
 		if payload.Seq != nil {
-			s.SetSequence(*payload.Seq)
+			s.SetSequence(payload.Seq)
 		}
 		return handler(s, payload)
 	}
 	return errors.New("no handler for event name")
 }
 
+func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING IDENTIFY EVENT")
+	identifyEvent := sendevents.IdentifyEvent{
+		Token: *s.GetToken(),
+		Properties: sendevents.IdentifyProperties{
+			Os:      runtime.GOOS,
+			Browser: "discord",
+			Device:  "discord",
+		},
+		Intents: structs.GetIntents(s.GetIntents()),
+	}
+	identifyPayload := gateway.Payload{
+		OpCode: gateway.Identify,
+		Data:   identifyEvent,
+	}
+
+	identifyData, err := json.Marshal(identifyPayload)
+	if err != nil {
+		return err
+	}
+
+	return s.Write(identifyData)
+}
+
 func handleReadyEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING READY EVENT")
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
-		s.ID = &readyEvent.SessionID
-		s.ResumeURL = &readyEvent.ResumeGatewayURL
+		s.SetID(&readyEvent.SessionID)
+		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
+		fmt.Printf("successfully connected to gateway Bot ID: %v", *s.GetID())
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -100,9 +130,10 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleHelloEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING HELLO EVENT")
 	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
 		heartbeatInterval := int(helloEvent.HeartbeatInterval)
-		s.HeartbeatACK = &heartbeatInterval
+		s.SetHeartbeatACK(&heartbeatInterval)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -110,13 +141,24 @@ func handleHelloEvent(s *Session, p gateway.Payload) error {
 	return startHeartbeatTimer(s)
 }
 
+func handleHeartbeatEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING HEARTBEAT EVENT")
+	if heartbeatEvent, ok := p.Data.(receiveevents.HeartbeatEvent); ok {
+		if heartbeatEvent.LastSequence != nil {
+			s.SetSequence(heartbeatEvent.LastSequence)
+		}
+		return sendHeartbeatEvent(s)
+	}
+	return errors.New("unexpected payload data type")
+}
+
 func sendHeartbeatEvent(s *Session) error {
-	if s.Conn == nil {
+	if s.GetConn() == nil {
 		return errors.New("connection unavailable")
 	}
 
 	heartbeatEvent := sendevents.HeartbeatEvent{
-		LastSequence: s.Sequence,
+		LastSequence: s.GetSequence(),
 	}
 	ackPayload := gateway.Payload{
 		OpCode: gateway.Heartbeat,

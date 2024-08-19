@@ -8,10 +8,6 @@ import (
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 )
 
-const (
-	GatewayURL = "wss://gateway.discord.gg/?v=10&encoding=json"
-)
-
 type GatewayOpCode int
 
 const (
