@@ -3,6 +3,7 @@ package session
 import (
 	"bufio"
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,24 +30,42 @@ type Session struct {
 	ResumeURL     *string
 	Token         *string
 	Intents       []structs.Intent
+	Servers       map[structs.Snowflake]structs.Server
 	helloReceived chan struct{}
 	readChan      chan []byte
 	writeChan     chan []byte
 	errorChan     chan error
 }
 
-func (s *Session) Exit() error {
-	return s.Conn.Close()
+func (s *Session) Exit(closeCode int) error {
+	// Construct the close frame
+	closeFrame := make([]byte, 2)
+	binary.BigEndian.PutUint16(closeFrame[:2], uint16(closeCode))
+
+	// Send the close frame
+	if _, err := s.Conn.Write(closeFrame); err != nil {
+		return fmt.Errorf("error sending close frame: %v", err)
+	}
+
+	// Close the connection
+	if err := s.Conn.Close(); err != nil {
+		return fmt.Errorf("error closing connection: %v", err)
+	}
+
+	// Close the channels
+	close(s.readChan)
+	close(s.writeChan)
+	close(s.errorChan)
+
+	return nil
 }
 
 func (s *Session) Listen() {
 	log.Println("Starting to listen for messages")
 	for msg := range s.readChan {
 		var payload gateway.Payload
-		fmt.Printf("New message received: %s\n", string(msg))
 		if err := json.Unmarshal(msg, &payload); err != nil {
 			s.errorChan <- fmt.Errorf("error parsing message: %v", err)
-			fmt.Println(payload.ToString())
 			continue
 		}
 
@@ -67,7 +86,6 @@ func (s *Session) Listen() {
 
 		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
 			s.errorChan <- fmt.Errorf("error handling event: %v", err)
-			fmt.Println(payload.ToString())
 			continue
 		}
 	}
@@ -128,7 +146,6 @@ func (s *Session) Write(data []byte) {
 
 func (s *Session) handleWrite() {
 	for data := range s.writeChan {
-		fmt.Printf("WRITING DATA: %s\n", string(data))
 		if _, err := s.Conn.Write(data); err != nil {
 			s.errorChan <- err
 		}
@@ -142,31 +159,36 @@ func (s *Session) handleError() {
 }
 
 func NewSession(token string, intents []structs.Intent) (*Session, error) {
-	ws, err := dialer(token)
-	if err != nil {
-		return nil, err
-	}
-
 	var sess Session
-	sess.SetConn(ws)
-	sess.SetEventHandler(NewEventHandler())
 	sess.SetToken(&token)
+	sess.SetEventHandler(NewEventHandler())
 	sess.SetIntents(intents)
+	sess.SetServers(make(map[structs.Snowflake]structs.Server))
 	sess.helloReceived = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
 
+	// having this logic allows the session to resume and call NewSession to re-populate the session details
+	ws, err := sess.dialer()
+	if err != nil {
+		return nil, err
+	}
+	sess.SetConn(ws)
+
+	// set up the goroutines to listen, read, write, and handle errors
 	go sess.Listen()
 	go sess.handleRead()
 	go sess.handleWrite()
 	go sess.handleError()
 
+	// stop here until the HELLO event is receieved
 	<-sess.helloReceived
 
 	var identifyData gateway.Payload
 	identifyData.OpCode = gateway.Identify
 
+	// let her rip tater chip
 	if err := sess.EventHandler.HandleEvent(&sess, identifyData); err != nil {
 		return nil, err
 	}
@@ -234,10 +256,19 @@ func getBotVersion() (string, error) {
 	return strings.TrimSpace(string(output)), nil
 }
 
-func dialer(token string) (*websocket.Conn, error) {
-	url, err := getGatewayUrl(token)
-	if err != nil {
-		return nil, err
+func (s *Session) dialer() (*websocket.Conn, error) {
+	var url string
+	if s.GetResumeURL() != nil {
+		url = *s.GetResumeURL()
+	} else {
+		var err error
+		if s.GetToken() == nil {
+			return nil, fmt.Errorf("token not set for session")
+		}
+		url, err = getGatewayUrl(*s.GetToken())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	ws, err := websocket.Dial(url+"/?v=10&encoding=json", "", "http://localhost/")
@@ -358,4 +389,38 @@ func (s *Session) SetIntents(intents []structs.Intent) {
 	defer s.Mu.Unlock()
 
 	s.Intents = intents
+}
+
+func (s *Session) GetServers() map[structs.Snowflake]structs.Server {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.Servers
+}
+
+func (s *Session) SetServers(servers map[structs.Snowflake]structs.Server) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Servers = servers
+}
+
+func (s *Session) GetServerByName(name string) *structs.Server {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	for _, guild := range s.Servers {
+		if guild.Name == name {
+			return &guild
+		}
+	}
+
+	return nil
+}
+
+func (s *Session) AddServer(server structs.Server) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Servers[server.ID] = server
 }

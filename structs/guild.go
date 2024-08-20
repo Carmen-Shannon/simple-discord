@@ -116,7 +116,7 @@ type Guild struct {
 	Owner                       *bool                           `json:"owner,omitempty"`
 	OwnerID                     Snowflake                       `json:"owner_id"`
 	Permissions                 *string                         `json:"permissions,omitempty"`
-	Region                      *VoiceRegion                    `json:"region,omitempty"`
+	Region                      *string                         `json:"region,omitempty"` //DEPRECATED
 	AFKChannelID                *Snowflake                      `json:"afk_channel_id,omitempty"`
 	AFKTimeout                  int                             `json:"afk_timeout"`
 	IsWidgetEnabled             *bool                           `json:"is_widget_enabled,omitempty"`

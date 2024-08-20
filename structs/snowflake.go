@@ -17,6 +17,10 @@ type Snowflake struct {
 	Increment *uint8     `json:"increment,omitempty"`
 }
 
+func (s *Snowflake) ToString() string {
+	return strconv.Itoa(int(s.ID))
+}
+
 func (s *Snowflake) deconstructSnowflake() {
 	timestamp := time.UnixMilli(int64((s.ID >> 22) + Epoch))
 	workerID := uint8(s.ID & 0x3E0000 >> 17)

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Carmen-Shannon/simple-discord/structs"
+	structs "github.com/Carmen-Shannon/simple-discord/structs"
 )
 
 type HelloEvent struct {
@@ -170,18 +170,7 @@ type EntitlementDeleteEvent struct {
 }
 
 type GuildCreateEvent struct {
-	*structs.Guild
-	JoinedAt             time.Time                     `json:"joined_at"`
-	Large                bool                          `json:"large"`
-	Unavailable          *bool                         `json:"unavailable,omitempty"`
-	MemberCount          int                           `json:"member_count"`
-	VoiceStates          []structs.VoiceState          `json:"voice_states"`
-	Members              []structs.GuildMember         `json:"members"`
-	Channels             []structs.Channel             `json:"channels"`
-	Threads              []structs.Channel             `json:"threads"`
-	Presences            []PresenceUpdateEvent         `json:"presences"`
-	StageInstances       []structs.StageInstance       `json:"stage_instances"`
-	GuildScheduledEvents []structs.GuildScheduledEvent `json:"guild_scheduled_events"`
+	*structs.Server
 }
 
 type GuildCreateUnavailableEvent struct {
@@ -394,12 +383,7 @@ type MessageReactionRemoveEmojiEvent struct {
 }
 
 type PresenceUpdateEvent struct {
-	User         structs.User       `json:"user"`
-	GuildID      structs.Snowflake  `json:"guild_id"`
-	Status       UserStatusType     `json:"status"`
-	Activities   []structs.Activity `json:"activities"`
-	ClientStatus ClientStatus       `json:"client_status"`
-	Nonce        *string            `json:"nonce,omitempty"`
+	*structs.PresenceUpdate
 }
 
 type StageInstanceCreateEvent struct {
@@ -476,20 +460,4 @@ type GuildMembersChunk struct {
 	ChunkCount int                   `json:"chunk_count"`
 	NotFound   []structs.Snowflake   `json:"not_found"`
 	Presences  []PresenceUpdateEvent
-}
-
-type UserStatusType string
-
-const (
-	UserOnline    UserStatusType = "online"
-	UserDND       UserStatusType = "dnd"
-	UserIdle      UserStatusType = "idle"
-	UserInvisible UserStatusType = "invisible"
-	UserOffline   UserStatusType = "offline"
-)
-
-type ClientStatus struct {
-	Desktop *string `json:"desktop,omitempty"`
-	Mobile  *string `json:"mobile,omitempty"`
-	Web     *string `json:"web,omitempty"`
 }

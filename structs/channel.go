@@ -44,41 +44,41 @@ const (
 )
 
 type Channel struct {
-	ID                     Snowflake               `json:"id"`
-	Type                   ChannelType             `json:"type"`
-	GuildID                *Snowflake              `json:"guild_id,omitempty"`
-	Position               *int                    `json:"position,omitempty"`
-	PermissionOverwrites   *Overwrite              `json:"permission_overwrites,omitempty"`
-	Name                   *string                 `json:"name,omitempty"`
-	Topic                  *string                 `json:"topic,omitempty"`
-	NSFW                   *bool                   `json:"nsfw,omitempty"`
-	LastMessageID          *Snowflake              `json:"last_message_id,omitempty"`
-	Bitrate                *int                    `json:"bitrate,omitempty"`
-	UserLimit              *int                    `json:"user_limit,omitempty"`
-	RateLimitPerUser       *int                    `json:"rate_limit_per_user,omitempty"`
-	Recipients             []User                  `json:"recipients,omitempty"`
-	Icon                   *string                 `json:"icon,omitempty"`
-	OwnerID                *Snowflake              `json:"owner_id,omitempty"`
-	ApplicationID          *Snowflake              `json:"application_id,omitempty"`
-	Managed                *bool                   `json:"managed,omitempty"`
-	ParentID               *Snowflake              `json:"parent_id,omitempty"`
-	LastPinTimestamp       *time.Time              `json:"last_pin_timestamp,omitempty"`
-	RtcRegion              *string                 `json:"rtc_region,omitempty"`
-	VideoQualityMode       *int                    `json:"video_quality_mode,omitempty"`
-	MessageCount           *int                    `json:"message_count,omitempty"`
-	MemberCount            *int                    `json:"member_count,omitempty"`
-	ThreadMetadata         *ThreadMetaData         `json:"thread_metadata,omitempty"`
-	ThreadMember           *ThreadMember           `json:"thread_member,omitempty"`
-	AutoArchiveDuration    *int                    `json:"auto_archive_duration,omitempty"`
-	Permissions            *string                 `json:"permissions,omitempty"`
-	Flags                  *ChannelFlag            `json:"flags,omitempty"`
-	TotalMessageSent       *int                    `json:"total_message_sent,omitempty"`
-	AvailableTags          []ForumTag              `json:"available_tags,omitempty"`
-	AppliedTags            []Snowflake             `json:"applied_tags,omitempty"`
-	DefaultReactionEmoji   *DefaultReaction        `json:"default_reaction_emoji,omitempty"`
-	DefaultThreadRateLimit *int                    `json:"default_thread_rate_limit,omitempty"`
-	DefaultSortOrder       *SortOrderType          `json:"default_sort_order,omitempty"`
-	DefaultForumLayout     *ForumLayoutType        `json:"default_forum_layout,omitempty"`
+	ID                     Snowflake        `json:"id"`
+	Type                   ChannelType      `json:"type"`
+	GuildID                *Snowflake       `json:"guild_id,omitempty"`
+	Position               *int             `json:"position,omitempty"`
+	PermissionOverwrites   []Overwrite      `json:"permission_overwrites,omitempty"`
+	Name                   *string          `json:"name,omitempty"`
+	Topic                  *string          `json:"topic,omitempty"`
+	NSFW                   *bool            `json:"nsfw,omitempty"`
+	LastMessageID          *Snowflake       `json:"last_message_id,omitempty"`
+	Bitrate                *int             `json:"bitrate,omitempty"`
+	UserLimit              *int             `json:"user_limit,omitempty"`
+	RateLimitPerUser       *int             `json:"rate_limit_per_user,omitempty"`
+	Recipients             []User           `json:"recipients,omitempty"`
+	Icon                   *string          `json:"icon,omitempty"`
+	OwnerID                *Snowflake       `json:"owner_id,omitempty"`
+	ApplicationID          *Snowflake       `json:"application_id,omitempty"`
+	Managed                *bool            `json:"managed,omitempty"`
+	ParentID               *Snowflake       `json:"parent_id,omitempty"`
+	LastPinTimestamp       *time.Time       `json:"last_pin_timestamp,omitempty"`
+	RtcRegion              *string          `json:"rtc_region,omitempty"`
+	VideoQualityMode       *int             `json:"video_quality_mode,omitempty"`
+	MessageCount           *int             `json:"message_count,omitempty"`
+	MemberCount            *int             `json:"member_count,omitempty"`
+	ThreadMetadata         *ThreadMetaData  `json:"thread_metadata,omitempty"`
+	ThreadMember           *ThreadMember    `json:"thread_member,omitempty"`
+	AutoArchiveDuration    *int             `json:"auto_archive_duration,omitempty"`
+	Permissions            *string          `json:"permissions,omitempty"`
+	Flags                  *ChannelFlag     `json:"flags,omitempty"`
+	TotalMessageSent       *int             `json:"total_message_sent,omitempty"`
+	AvailableTags          []ForumTag       `json:"available_tags,omitempty"`
+	AppliedTags            []Snowflake      `json:"applied_tags,omitempty"`
+	DefaultReactionEmoji   *DefaultReaction `json:"default_reaction_emoji,omitempty"`
+	DefaultThreadRateLimit *int             `json:"default_thread_rate_limit,omitempty"`
+	DefaultSortOrder       *SortOrderType   `json:"default_sort_order,omitempty"`
+	DefaultForumLayout     *ForumLayoutType `json:"default_forum_layout,omitempty"`
 }
 
 type Overwrite struct {
@@ -98,17 +98,17 @@ type ThreadMetaData struct {
 }
 
 type ThreadMember struct {
-	ID       *Snowflake   `json:"id,omitempty"`
-	UserID   *Snowflake   `json:"user_id,omitempty"`
-	JoinedAt time.Time    `json:"joined_at"`
-	Flags    int          `json:"flags"`
-	Member   GuildMember  `json:"member"`
+	ID       *Snowflake  `json:"id,omitempty"`
+	UserID   *Snowflake  `json:"user_id,omitempty"`
+	JoinedAt time.Time   `json:"joined_at"`
+	Flags    int         `json:"flags"`
+	Member   GuildMember `json:"member"`
 }
 
 type ForumTag struct {
-	ID          Snowflake `json:"id"`
-	Name        string    `json:"name"`
-	IsModerated bool      `json:"is_moderated"`
+	ID          Snowflake  `json:"id"`
+	Name        string     `json:"name"`
+	IsModerated bool       `json:"is_moderated"`
 	EmojiID     *Snowflake `json:"emoji_id,omitempty"`
 	EmojiName   *string    `json:"emoji_name,omitempty"`
 }

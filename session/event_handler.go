@@ -24,12 +24,12 @@ func NewEventHandler() *EventHandler {
 		NamedHandlers: map[string]func(*Session, gateway.Payload) error{
 			"HELLO":                     handleHelloEvent,
 			"READY":                     handleReadyEvent,
-			"RESUMED":                   nil, //placeholder
-			"RECONNECT":                 nil, //placeholder
-			"INVALID_SESSION":           nil, //placeholder
-			"CHANNEL_CREATE":            nil, //placeholder
-			"CHANNEL_UPDATE":            nil, //placeholder
-			"CHANNEL_DELETE":            nil, //placeholder
+			"RESUMED":                   handleResumedEvent,
+			"RECONNECT":                 handleReconnectEvent,
+			"INVALID_SESSION":           handleInvalidSessionEvent,
+			"CHANNEL_CREATE":            nil,                //placeholder
+			"CHANNEL_UPDATE":            nil,                //placeholder
+			"CHANNEL_DELETE":            nil,                //placeholder
 			"GUILD_CREATE":              handleGuildCreateEvent,
 			"GUILD_UPDATE":              nil, //placeholder
 			"GUILD_DELETE":              nil, //placeholder
@@ -60,12 +60,12 @@ func NewEventHandler() *EventHandler {
 		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
 			gateway.Heartbeat:           handleHeartbeatEvent,
 			gateway.Identify:            handleSendIdentifyEvent,
-			gateway.PresenceUpdate:      nil, //placeholder
-			gateway.VoiceStateUpdate:    nil, //placeholder
-			gateway.Resume:              nil, //placeholder
-			gateway.RequestGuildMembers: nil, //placeholder
+			gateway.PresenceUpdate:      handleSendPresenceUpdateEvent,
+			gateway.VoiceStateUpdate:    handleSendVoiceStateUpdateEvent,
+			gateway.Resume:              handleSendResumeEvent,
+			gateway.RequestGuildMembers: handleSendRequestGuildMembersEvent,
 			gateway.Hello:               handleHelloEvent,
-			gateway.HeartbeatACK:        handleHeartbeatACKEvent, //placeholder
+			gateway.HeartbeatACK:        handleHeartbeatACKEvent,
 		},
 	}
 }
@@ -90,6 +90,65 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 		return handler(s, payload)
 	}
 	return errors.New("no handler for event name")
+}
+
+func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING REQUEST GUILD MEMBERS EVENT")
+	fmt.Println("REQUEST GUILD MEMBERS NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING VOICE STATE UPDATE EVENT")
+	fmt.Println("VOICE STATE UPDATE NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendPresenceUpdateEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING PRESENCE UPDATE EVENT")
+	fmt.Println("PRESENCE UPDATE NOT IMPLEMENTED")
+	// presenceUpdateEvent := sendevents.PresenceUpdateEvent{
+	// 	Activities: []structs.Activity{
+	// 		{
+	// 			Name: "discord",
+	// 			Type: 0,
+	// 		},
+	// 	},
+	// 	Status: "online",
+	// }
+	// presencePayload := gateway.Payload{
+	// 	OpCode: gateway.PresenceUpdate,
+	// 	Data:   presenceUpdateEvent,
+	// }
+
+	// presenceData, err := json.Marshal(presencePayload)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// s.Write(presenceData)
+	return nil
+}
+
+func handleSendResumeEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING RESUME EVENT")
+	resumeEvent := sendevents.ResumeEvent{
+		Token:     *s.GetToken(),
+		SessionID: *s.GetID(),
+		Seq:       *s.GetSequence(),
+	}
+	resumePayload := gateway.Payload{
+		OpCode: gateway.Resume,
+		Data:   resumeEvent,
+	}
+
+	resumeData, err := json.Marshal(resumePayload)
+	if err != nil {
+		return err
+	}
+
+	s.Write(resumeData)
+	return nil
 }
 
 func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
@@ -117,10 +176,49 @@ func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
+func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING INVALID SESSION EVENT")
+	if invalidSessionEvent, ok := p.Data.(receiveevents.InvalidSessionEvent); ok {
+		if invalidSessionEvent {
+			handleSendResumeEvent(s, p)
+		} else {
+			s.Exit(1000)
+		}
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+
+	return nil
+}
+
+func handleReconnectEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING RECONNECT EVENT")
+	if _, ok := p.Data.(receiveevents.ReconnectEvent); ok {
+		handleSendResumeEvent(s, p)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+
+	return nil
+}
+
+func handleResumedEvent(s *Session, p gateway.Payload) error {
+	fmt.Println("HANDLING RESUMED EVENT")
+	fmt.Println(p.ToString())
+	return nil
+}
+
 func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
 	fmt.Println("HANDLING GUILD CREATE EVENT")
 	if guildCreateEvent, ok := p.Data.(receiveevents.GuildCreateEvent); ok {
-		fmt.Printf("GUILD CREATED: %v\n", guildCreateEvent.ID)
+		if guildCreateEvent.Unavailable != nil && *guildCreateEvent.Unavailable {
+			server := structs.Server(*guildCreateEvent.Server)
+			s.AddServer(server)
+		}
+	} else if guildCreateUnavailableEvent, ok := p.Data.(receiveevents.GuildCreateUnavailableEvent); ok {
+		server := structs.Server{}
+		server.ID = guildCreateUnavailableEvent.ID
+		s.AddServer(server)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
