@@ -61,7 +61,6 @@ func (s *Session) Exit(closeCode int) error {
 }
 
 func (s *Session) Listen() {
-	log.Println("Starting to listen for messages")
 	for msg := range s.readChan {
 		var payload gateway.Payload
 		if err := json.Unmarshal(msg, &payload); err != nil {
@@ -158,6 +157,66 @@ func (s *Session) handleError() {
 	}
 }
 
+func (s *Session) RegenerateSession(newSession *Session) error {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Conn = newSession.Conn
+	s.HeartbeatACK = newSession.HeartbeatACK
+	s.Sequence = newSession.Sequence
+	s.EventHandler = newSession.EventHandler
+	s.ID = newSession.ID
+	s.ResumeURL = newSession.ResumeURL
+	s.Token = newSession.Token
+	s.Intents = newSession.Intents
+	s.Servers = newSession.Servers
+	s.helloReceived = newSession.helloReceived
+	s.readChan = newSession.readChan
+	s.writeChan = newSession.writeChan
+	s.errorChan = newSession.errorChan
+
+	return nil
+}
+
+func (s *Session) ResumeSession() error {
+	// ensure the connection is really closed
+	if err := s.Exit(1000); err != nil {
+		return err
+	}
+
+	// open a new connection using the cached url
+	ws, err := s.dialer()
+	if err != nil {
+		return err
+	}
+	s.SetConn(ws)
+
+	// clean out the cached Guilds from the previous session
+	s.SetServers(make(map[structs.Snowflake]structs.Server))
+
+	// Exit() already closed the channels, so we are re-opening them here
+	s.helloReceived = make(chan struct{})
+	s.readChan = make(chan []byte)
+	s.writeChan = make(chan []byte, 4096)
+	s.errorChan = make(chan error)
+
+	// set up the goroutines to listen, read, write, and handle errors
+	go s.Listen()
+	go s.handleRead()
+	go s.handleWrite()
+	go s.handleError()
+
+	var resumeData gateway.Payload
+	resumeData.OpCode = gateway.Resume
+
+	// let her rip tater chip
+	if err := s.EventHandler.HandleEvent(s, resumeData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	var sess Session
 	sess.SetToken(&token)
@@ -169,7 +228,6 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
 
-	// having this logic allows the session to resume and call NewSession to re-populate the session details
 	ws, err := sess.dialer()
 	if err != nil {
 		return nil, err
@@ -219,8 +277,6 @@ func getGatewayUrl(token string) (string, error) {
 	if err := json.Unmarshal(resp, &gatewayResponse); err != nil {
 		return "", err
 	}
-
-	fmt.Println(gatewayResponse.URL)
 
 	return gatewayResponse.URL, nil
 }

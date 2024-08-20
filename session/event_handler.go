@@ -27,9 +27,9 @@ func NewEventHandler() *EventHandler {
 			"RESUMED":                   handleResumedEvent,
 			"RECONNECT":                 handleReconnectEvent,
 			"INVALID_SESSION":           handleInvalidSessionEvent,
-			"CHANNEL_CREATE":            nil,                //placeholder
-			"CHANNEL_UPDATE":            nil,                //placeholder
-			"CHANNEL_DELETE":            nil,                //placeholder
+			"CHANNEL_CREATE":            nil, //placeholder
+			"CHANNEL_UPDATE":            nil, //placeholder
+			"CHANNEL_DELETE":            nil, //placeholder
 			"GUILD_CREATE":              handleGuildCreateEvent,
 			"GUILD_UPDATE":              nil, //placeholder
 			"GUILD_DELETE":              nil, //placeholder
@@ -131,7 +131,6 @@ func handleSendPresenceUpdateEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleSendResumeEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING RESUME EVENT")
 	resumeEvent := sendevents.ResumeEvent{
 		Token:     *s.GetToken(),
 		SessionID: *s.GetID(),
@@ -147,12 +146,12 @@ func handleSendResumeEvent(s *Session, p gateway.Payload) error {
 		return err
 	}
 
+	fmt.Println("HANDLING RESUME EVENT")
 	s.Write(resumeData)
 	return nil
 }
 
 func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING IDENTIFY EVENT")
 	identifyEvent := sendevents.IdentifyEvent{
 		Token: *s.GetToken(),
 		Properties: sendevents.IdentifyProperties{
@@ -172,17 +171,30 @@ func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
 		return err
 	}
 
+	fmt.Println("HANDLING IDENTIFY EVENT")
 	s.Write(identifyData)
 	return nil
 }
 
 func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING INVALID SESSION EVENT")
 	if invalidSessionEvent, ok := p.Data.(receiveevents.InvalidSessionEvent); ok {
 		if invalidSessionEvent {
-			handleSendResumeEvent(s, p)
+			if err := s.ResumeSession(); err != nil {
+				return err
+			}
+			fmt.Println("HANDLING INVALID SESSION EVENT")
+			fmt.Println("RESUMED SESSION")
 		} else {
-			s.Exit(1000)
+			s.Exit(1001)
+			var err error
+			var newSess *Session
+			newSess, err = NewSession(*s.GetToken(), s.GetIntents())
+			if err != nil {
+				return err
+			}
+			s.RegenerateSession(newSess)
+			fmt.Println("HANDLING INVALID SESSION EVENT")
+			fmt.Println("REGENERATED SESSION")
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -192,9 +204,12 @@ func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleReconnectEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING RECONNECT EVENT")
 	if _, ok := p.Data.(receiveevents.ReconnectEvent); ok {
-		handleSendResumeEvent(s, p)
+		if err := s.ResumeSession(); err != nil {
+			return err
+		}
+		fmt.Println("HANDLING RECONNECT EVENT")
+		fmt.Println("RESUMED SESSION")
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -209,16 +224,17 @@ func handleResumedEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING GUILD CREATE EVENT")
 	if guildCreateEvent, ok := p.Data.(receiveevents.GuildCreateEvent); ok {
 		if guildCreateEvent.Unavailable != nil && *guildCreateEvent.Unavailable {
 			server := structs.Server(*guildCreateEvent.Server)
 			s.AddServer(server)
+			fmt.Println("HANDLING GUILD CREATE EVENT")
 		}
 	} else if guildCreateUnavailableEvent, ok := p.Data.(receiveevents.GuildCreateUnavailableEvent); ok {
 		server := structs.Server{}
 		server.ID = guildCreateUnavailableEvent.ID
 		s.AddServer(server)
+		fmt.Println("HANDLING GUILD CREATE UNAVAILABLE EVENT")
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -227,16 +243,15 @@ func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleHeartbeatACKEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING HEARTBEAT ACK EVENT")
 	return nil
 }
 
 func handleReadyEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING READY EVENT")
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
+		fmt.Printf("successfully connected to gateway\n---------- %s ----------\n", readyEvent.User.Username)
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
-		fmt.Printf("successfully connected to gateway Bot ID: %v\n", *s.GetID())
+		fmt.Println("HANDLING READY EVENT")
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -245,10 +260,10 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleHelloEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING HELLO EVENT")
 	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
 		heartbeatInterval := int(helloEvent.HeartbeatInterval)
 		s.SetHeartbeatACK(&heartbeatInterval)
+		fmt.Println("HANDLING HELLO EVENT")
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -257,11 +272,11 @@ func handleHelloEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleHeartbeatEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING HEARTBEAT EVENT")
 	if heartbeatEvent, ok := p.Data.(receiveevents.HeartbeatEvent); ok {
 		if heartbeatEvent.LastSequence != nil {
 			s.SetSequence(heartbeatEvent.LastSequence)
 		}
+		fmt.Println("HANDLING HEARTBEAT EVENT")
 		return sendHeartbeatEvent(s)
 	}
 	return errors.New("unexpected payload data type")
@@ -285,7 +300,6 @@ func sendHeartbeatEvent(s *Session) error {
 		return err
 	}
 
-	fmt.Println("SENDING HEARTBEAT")
 	s.Write(heartbeatData)
 	return nil
 }
