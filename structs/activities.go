@@ -32,43 +32,43 @@ type Activity struct {
 	Type          ActivityType            `json:"type"`
 	URL           *string                 `json:"url"`
 	CreatedAt     int                     `json:"created_at"`
-	Timestamps    *Timestamps             `json:"timestamps"`
+	Timestamps    *ActivityTimestamps     `json:"timestamps"`
 	ApplicationId *Snowflake              `json:"application_id"`
 	Details       *string                 `json:"details"`
 	State         *string                 `json:"state"`
-	Emoji         *Emoji                  `json:"emoji"`
-	Party         *Party                  `json:"party"`
-	Assets        *Assets                 `json:"assets"`
-	Secrets       *Secrets                `json:"secrets"`
+	Emoji         *ActivityEmoji          `json:"emoji"`
+	Party         *ActivityParty          `json:"party"`
+	Assets        *ActivityAssets         `json:"assets"`
+	Secrets       *ActivitySecrets        `json:"secrets"`
 	Instance      *bool                   `json:"instance"`
 	Flags         *Bitfield[ActivityFlag] `json:"flags"`
 	Buttons       []Button                `json:"buttons"`
 }
 
-type Timestamps struct {
+type ActivityTimestamps struct {
 	Start *int `json:"start"`
 	End   *int `json:"end"`
 }
 
-type Emoji struct {
+type ActivityEmoji struct {
 	Name     string     `json:"name"`
 	ID       *Snowflake `json:"id"`
 	Animated *bool      `json:"animated"`
 }
 
-type Party struct {
+type ActivityParty struct {
 	ID   *string `json:"id"`
 	Size *[]int  `json:"size"`
 }
 
-type Assets struct {
+type ActivityAssets struct {
 	LargeImage *string `json:"large_image"`
 	LargeText  *string `json:"large_text"`
 	SmallImage *string `json:"small_image"`
 	SmallText  *string `json:"small_text"`
 }
 
-type Secrets struct {
+type ActivitySecrets struct {
 	Join     *string `json:"join"`
 	Spectate *string `json:"spectate"`
 	Match    *string `json:"match"`

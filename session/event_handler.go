@@ -23,41 +23,45 @@ type EventHandler struct {
 func NewEventHandler() *EventHandler {
 	return &EventHandler{
 		NamedHandlers: map[string]func(*Session, gateway.Payload) error{
-			"HELLO":                     handleHelloEvent,
-			"READY":                     handleReadyEvent,
-			"RESUMED":                   handleResumedEvent,
-			"RECONNECT":                 handleReconnectEvent,
-			"INVALID_SESSION":           handleInvalidSessionEvent,
-			"CHANNEL_CREATE":            handleChannelCreateEvent,
-			"CHANNEL_UPDATE":            handleChannelUpdateEvent,
-			"CHANNEL_DELETE":            handleChannelDeleteEvent,
-			"GUILD_CREATE":              handleGuildCreateEvent,
-			"GUILD_UPDATE":              handleGuildUpdateEvent,
-			"GUILD_DELETE":              handleGuildDeleteEvent,
-			"GUILD_BAN_ADD":             handleGuildBanAddEvent,
-			"GUILD_BAN_REMOVE":          handleGuildBanRemoveEvent,
-			"GUILD_EMOJIS_UPDATE":       handleGuildEmojisUpdateEvent,
-			"GUILD_INTEGRATIONS_UPDATE": handleGuildIntegrationsUpdateEvent,
-			"GUILD_MEMBER_ADD":          handleGuildMemberAddEvent,
-			"GUILD_MEMBER_REMOVE":       handleGuildMemberRemoveEvent,
-			"GUILD_MEMBER_UPDATE":       handleGuildMemberUpdateEvent,
-			"GUILD_MEMBERS_CHUNK":       handleGuildMembersChunkEvent,
-			"GUILD_ROLE_CREATE":         handleGuildRoleCreateEvent,
-			"GUILD_ROLE_UPDATE":         handleGuildRoleUpdateEvent,
-			"GUILD_ROLE_DELETE":         handleGuildRoleDeleteEvent,
-			"MESSAGE_CREATE":            handleMessageCreateEvent,
-			"MESSAGE_UPDATE":            handleMessageUpdateEvent,
-			"MESSAGE_DELETE":            handleMessageDeleteEvent,
-			"MESSAGE_BULK_DELETE":       handleMessageBulkDeleteEvent,
-			"REACTION_ADD":              nil, //placeholder
-			"REACTION_REMOVE":           nil, //placeholder
-			"REACTION_REMOVE_ALL":       nil, //placeholder
-			"TYPING_START":              nil, //placeholder
-			"USER_UPDATE":               nil, //placeholder
-			"VOICE_STATE_UPDATE":        nil, //placeholder
-			"VOICE_SERVER_UPDATE":       nil, //placeholder
-			"WEBHOOKS_UPDATE":           nil, //placeholder
-			"PRESENCE_UPDATE":           handlePresenceUpdateEvent,
+			"HELLO":                         handleHelloEvent,
+			"READY":                         handleReadyEvent,
+			"RESUMED":                       handleResumedEvent,
+			"RECONNECT":                     handleReconnectEvent,
+			"INVALID_SESSION":               handleInvalidSessionEvent,
+			"CHANNEL_CREATE":                handleChannelCreateEvent,
+			"CHANNEL_UPDATE":                handleChannelUpdateEvent,
+			"CHANNEL_DELETE":                handleChannelDeleteEvent,
+			"GUILD_CREATE":                  handleGuildCreateEvent,
+			"GUILD_UPDATE":                  handleGuildUpdateEvent,
+			"GUILD_DELETE":                  handleGuildDeleteEvent,
+			"GUILD_BAN_ADD":                 handleGuildBanAddEvent,
+			"GUILD_BAN_REMOVE":              handleGuildBanRemoveEvent,
+			"GUILD_EMOJIS_UPDATE":           handleGuildEmojisUpdateEvent,
+			"GUILD_INTEGRATIONS_UPDATE":     handleGuildIntegrationsUpdateEvent,
+			"GUILD_MEMBER_ADD":              handleGuildMemberAddEvent,
+			"GUILD_MEMBER_REMOVE":           handleGuildMemberRemoveEvent,
+			"GUILD_MEMBER_UPDATE":           handleGuildMemberUpdateEvent,
+			"GUILD_MEMBERS_CHUNK":           handleGuildMembersChunkEvent,
+			"GUILD_ROLE_CREATE":             handleGuildRoleCreateEvent,
+			"GUILD_ROLE_UPDATE":             handleGuildRoleUpdateEvent,
+			"GUILD_ROLE_DELETE":             handleGuildRoleDeleteEvent,
+			"MESSAGE_CREATE":                handleMessageCreateEvent,
+			"MESSAGE_UPDATE":                handleMessageUpdateEvent,
+			"MESSAGE_DELETE":                handleMessageDeleteEvent,
+			"MESSAGE_BULK_DELETE":           handleMessageBulkDeleteEvent,
+			"MESSAGE_REACTION_ADD":          handleMessageReactionAddEvent,
+			"MESSAGE_REACTION_REMOVE":       handleMessageReactionRemoveEvent,
+			"MESSAGE_REACTION_REMOVE_ALL":   handleMessageReactionRemoveAllEvent,
+			"MESSAGE_REACTION_REMOVE_EMOJI": handleMessageReactionRemoveEmojiEvent,
+			"MESSAGE_POLL_VOTE_ADD":         handleMessagePollVoteAddEvent,
+			"MESSAGE_POLL_VOTE_REMOVE":      handleMessagePollVoteRemoveEvent,
+			"TYPING_START":                  handleTypingStartEvent,
+			"USER_UPDATE":                   handleUserUpdateEvent,
+			"VOICE_CHANNEL_EFFECT_SEND":     handleVoiceChannelEffectSendEvent,
+			"VOICE_STATE_UPDATE":            handleVoiceStateUpdateEvent,
+			"VOICE_SERVER_UPDATE":           handleVoiceServerUpdateEvent,
+			"WEBHOOKS_UPDATE":               handleWebhooksUpdateEvent,
+			"PRESENCE_UPDATE":               handlePresenceUpdateEvent,
 		},
 		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
 			gateway.Heartbeat:           handleHeartbeatEvent,
@@ -127,26 +131,6 @@ func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 func handleSendPresenceUpdateEvent(s *Session, p gateway.Payload) error {
 	fmt.Println("HANDLING PRESENCE UPDATE EVENT")
 	fmt.Println("PRESENCE UPDATE NOT IMPLEMENTED")
-	// presenceUpdateEvent := sendevents.PresenceUpdateEvent{
-	// 	Activities: []structs.Activity{
-	// 		{
-	// 			Name: "discord",
-	// 			Type: 0,
-	// 		},
-	// 	},
-	// 	Status: "online",
-	// }
-	// presencePayload := gateway.Payload{
-	// 	OpCode: gateway.PresenceUpdate,
-	// 	Data:   presenceUpdateEvent,
-	// }
-
-	// presenceData, err := json.Marshal(presencePayload)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// s.Write(presenceData)
 	return nil
 }
 
@@ -233,6 +217,7 @@ func handleChannelCreateEvent(s *Session, p gateway.Payload) error {
 			return errors.New("server not found")
 		}
 		channel := structs.Channel(*channelCreateEvent.Channel)
+		channel.Typing = structs.NewTypingChannel()
 		server.AddChannel(channel)
 		s.AddServer(server)
 	} else {
@@ -550,6 +535,16 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 			return errors.New("server not found")
 		}
 
+		if server.GetMessage(messageUpdateEvent.ChannelID, messageUpdateEvent.Message.ID) == nil {
+			message, err := s.GetMessageRequest(messageUpdateEvent.ChannelID.ToString(), messageUpdateEvent.Message.ID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+			server.AddMessage(*message)
+		}
+
 		server.UpdateMessage(*messageUpdateEvent.Message)
 	} else {
 		return errors.New("unexpected payload data type")
@@ -583,6 +578,293 @@ func handleMessageBulkDeleteEvent(s *Session, p gateway.Payload) error {
 		for _, id := range messageBulkDeleteEvent.IDs {
 			server.DeleteMessage(messageBulkDeleteEvent.ChannelID, id)
 		}
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
+	if reactionAddEvent, ok := p.Data.(receiveevents.MessageReactionAddEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[reactionAddEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(reactionAddEvent.ChannelID, reactionAddEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(reactionAddEvent.ChannelID.ToString(), reactionAddEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+
+		currentReaction := currentMessage.GetReaction(reactionAddEvent.Emoji)
+		if currentReaction == nil {
+			return errors.New("reaction not found")
+		}
+		currentMessage.UpdateReactions(*currentReaction)
+
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
+	if reactionRemoveEvent, ok := p.Data.(receiveevents.MessageReactionRemoveEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[reactionRemoveEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(reactionRemoveEvent.ChannelID, reactionRemoveEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(reactionRemoveEvent.ChannelID.ToString(), reactionRemoveEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+
+		currentReaction := currentMessage.GetReaction(reactionRemoveEvent.Emoji)
+		if currentReaction == nil {
+			return errors.New("reaction not found")
+		}
+
+		if currentReaction.Count--; currentReaction.Count == 0 {
+			currentMessage.DeleteReaction(reactionRemoveEvent.Emoji)
+		} else {
+			currentMessage.UpdateReactions(*currentReaction)
+		}
+
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageReactionRemoveAllEvent(s *Session, p gateway.Payload) error {
+	if reactionRemoveAllEvent, ok := p.Data.(receiveevents.MessageReactionRemoveAllEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[reactionRemoveAllEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(reactionRemoveAllEvent.ChannelID, reactionRemoveAllEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(reactionRemoveAllEvent.ChannelID.ToString(), reactionRemoveAllEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+
+		currentMessage.Reactions = []structs.Reaction{}
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageReactionRemoveEmojiEvent(s *Session, p gateway.Payload) error {
+	if reactionRemoveEmojiEvent, ok := p.Data.(receiveevents.MessageReactionRemoveEmojiEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[reactionRemoveEmojiEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(reactionRemoveEmojiEvent.ChannelID, reactionRemoveEmojiEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(reactionRemoveEmojiEvent.ChannelID.ToString(), reactionRemoveEmojiEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+
+		currentMessage.DeleteReaction(reactionRemoveEmojiEvent.Emoji)
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessagePollVoteAddEvent(s *Session, p gateway.Payload) error {
+	if messagePollVoteAddEvent, ok := p.Data.(receiveevents.MessagePollVoteAddEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messagePollVoteAddEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(messagePollVoteAddEvent.ChannelID, messagePollVoteAddEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(messagePollVoteAddEvent.ChannelID.ToString(), messagePollVoteAddEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+		if currentMessage.Poll == nil {
+			return errors.New("no poll active")
+		}
+
+		answer := &structs.PollAnswer{
+			AnswerID:  messagePollVoteAddEvent.AnswerID,
+			PollMedia: structs.PollMedia{},
+		}
+
+		currentMessage.Poll.Answers = append(currentMessage.Poll.Answers, *answer)
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessagePollVoteRemoveEvent(s *Session, p gateway.Payload) error {
+	if messagePollVoteRemoveEvent, ok := p.Data.(receiveevents.MessagePollVoteRemoveEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messagePollVoteRemoveEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentMessage := server.GetMessage(messagePollVoteRemoveEvent.ChannelID, messagePollVoteRemoveEvent.MessageID)
+		if currentMessage == nil {
+			message, err := s.GetMessageRequest(messagePollVoteRemoveEvent.ChannelID.ToString(), messagePollVoteRemoveEvent.MessageID.ToString())
+			if err != nil {
+				return err
+			} else if message == nil {
+				return errors.New("message not found")
+			}
+
+			currentMessage = message
+		}
+		if currentMessage.Poll == nil {
+			return errors.New("no poll active")
+		}
+
+		for i, answer := range currentMessage.Poll.Answers {
+			if answer.AnswerID == messagePollVoteRemoveEvent.AnswerID {
+				currentMessage.Poll.Answers = append(currentMessage.Poll.Answers[:i], currentMessage.Poll.Answers[i+1:]...)
+				break
+			}
+		}
+
+		server.UpdateMessage(*currentMessage)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleTypingStartEvent(s *Session, p gateway.Payload) error {
+	if typingStartEvent, ok := p.Data.(receiveevents.TypingStartEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[typingStartEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		currentChannel := server.GetChannel(typingStartEvent.ChannelID)
+		if currentChannel == nil {
+			return errors.New("channel not found")
+		}
+
+		currentChannel.Typing.AddUser(typingStartEvent.UserID)
+		server.UpdateChannel(typingStartEvent.ChannelID, *currentChannel)
+		s.AddServer(server)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleUserUpdateEvent(s *Session, p gateway.Payload) error {
+	if userUpdateEvent, ok := p.Data.(receiveevents.UserUpdateEvent); ok {
+		servers := s.GetServers()
+		for _, server := range servers {
+			members := server.GetMembers()
+			for _, member := range members {
+				if member.User.ID.Equals(userUpdateEvent.ID) {
+					if err := util.UpdateFields(member.User, userUpdateEvent); err != nil {
+						return err
+					}
+					server.UpdateMember(userUpdateEvent.ID, member)
+					s.AddServer(server)
+					break
+				}
+			}
+		}
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleVoiceChannelEffectSendEvent(s *Session, p gateway.Payload) error {
+	if _, ok := p.Data.(receiveevents.VoiceChannelEffectSendEvent); ok {
+		fmt.Println("VOICE CHANNEL EFFECT SEND NOT IMPLEMENTED IDK WHAT TO USE IT FOR")
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
+	if voiceStateUpdateEvent, ok := p.Data.(receiveevents.VoiceStateUpdateEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[voiceStateUpdateEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		server.UpdateVoiceState(*voiceStateUpdateEvent.VoiceState)
+		s.AddServer(server)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
+	if _, ok := p.Data.(receiveevents.VoiceServerUpdateEvent); ok {
+		fmt.Println("VOICE SERVER UPDATE EVENT NOT IMPLEMENTED YET IDK HOW TO USE IT")
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleWebhooksUpdateEvent(s *Session, p gateway.Payload) error {
+	if _, ok := p.Data.(receiveevents.WebhooksUpdateEvent); ok {
+		fmt.Println("WEBHOOKS UPDATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR SERVER WEBHOOK UPDATE EVENTS")
 	} else {
 		return errors.New("unexpected payload data type")
 	}

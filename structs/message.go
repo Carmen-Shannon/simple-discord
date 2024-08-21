@@ -267,6 +267,68 @@ type Message struct {
 	Call                 *MessageCall                `json:"call,omitempty"`
 }
 
+func (m *Message) GetReaction(emoji Emoji) *Reaction {
+	for _, r := range m.Reactions {
+		// first check if it has an ID and the query Emoji does as well
+		if r.Emoji.ID != nil && emoji.ID != nil {
+			if r.Emoji.ID.Equals(*emoji.ID) {
+				return &r
+			}
+		}
+
+		// then check if it has a name and the query Emoji does as well
+		if r.Emoji.Name != nil && emoji.Name != nil {
+			if *r.Emoji.Name == *emoji.Name {
+				return &r
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Message) UpdateReactions(reaction Reaction) error {
+	if m.GetReaction(reaction.Emoji) == nil {
+		m.Reactions = append(m.Reactions, reaction)
+		return nil
+	}
+
+	for i, r := range m.Reactions {
+		if r.Emoji.ID != nil && reaction.Emoji.ID != nil {
+			if r.Emoji.ID.Equals(*reaction.Emoji.ID) {
+				m.Reactions[i] = reaction
+				return nil
+			}
+		}
+
+		if r.Emoji.Name != nil && reaction.Emoji.Name != nil {
+			if *r.Emoji.Name == *reaction.Emoji.Name {
+				m.Reactions[i] = reaction
+				return nil
+			}
+		}
+	}
+
+	return errors.New("error updating reaction")
+}
+
+func (m *Message) DeleteReaction(emoji Emoji) {
+	for i, r := range m.Reactions {
+		if r.Emoji.ID != nil && emoji.ID != nil {
+			if r.Emoji.ID.Equals(*emoji.ID) {
+				m.Reactions = append(m.Reactions[:i], m.Reactions[i+1:]...)
+				return
+			}
+		}
+
+		if r.Emoji.Name != nil && emoji.Name != nil {
+			if *r.Emoji.Name == *emoji.Name {
+				m.Reactions = append(m.Reactions[:i], m.Reactions[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
 type MessageCall struct {
 	Participants   []Snowflake `json:"participants"`
 	EndedTimestamp *time.Time  `json:"ended_timestamp,omitempty"`

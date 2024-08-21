@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -333,6 +334,31 @@ func (s *Session) dialer() (*websocket.Conn, error) {
 		return nil, err
 	}
 	return ws, nil
+}
+
+// http request functions
+func (s *Session) GetMessageRequest(channelId, messageId string) (*structs.Message, error) {
+	if s.GetToken() == nil {
+		return nil, errors.New("token not set for session")
+	}
+	path := "/channels/" + channelId + "/messages/" + messageId
+	headers := map[string]string{
+		"Authorization": "Bot " + *s.Token,
+	}
+
+	resp, err := requestutil.HttpRequest("GET", path, headers, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var message structs.Message
+
+	err = json.Unmarshal(resp, &message)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
 }
 
 // getters and setters because mutex

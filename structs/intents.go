@@ -26,6 +26,30 @@ const (
 	DirectMessagePollsIntent          Intent = 1 << 25
 )
 
+var AllIntents = []Intent{
+	GuildsIntent,
+	GuildMembersIntent,
+	GuildModerationIntent,
+	GuildEmojisAndStickersIntens,
+	GuildIntegrationsIntent,
+	GuildWebhooksIntent,
+	GuildInvitesIntent,
+	GuildVoiceStatesIntent,
+	GuildPresencesIntent,
+	GuildMessagesIntent,
+	GuildMessageReactionsIntent,
+	GuildMessageTypingIntent,
+	DirectMessagesIntent,
+	DirectMessageReactionsIntent,
+	DirectMessageTypingIntent,
+	MessageContentIntent,
+	GuildScheduledEventsIntent,
+	AutoModerationConfigurationIntent,
+	AutoModerationExecutionIntent,
+	GuildMessagePollsIntent,
+	DirectMessagePollsIntent,
+}
+
 func GetIntents(intents []Intent) int {
 	var intent int
 	for _, i := range intents {

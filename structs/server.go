@@ -18,7 +18,7 @@ type Server struct {
 	Presences            []PresenceUpdate      `json:"presences"`
 	StageInstances       []StageInstance       `json:"stage_instances"`
 	GuildScheduledEvents []GuildScheduledEvent `json:"guild_scheduled_events"`
-	mu                   *sync.RWMutex          `json:"-"`
+	mu                   *sync.RWMutex         `json:"-"`
 }
 
 func NewServer(guild *Guild) *Server {
@@ -29,9 +29,9 @@ func NewServer(guild *Guild) *Server {
 }
 
 func (s *Server) UpdateGuild(newGuild Guild) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.Guild = &newGuild
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Guild = &newGuild
 }
 
 func (s *Server) AddMessage(message Message) {
@@ -69,6 +69,13 @@ func (s *Server) UpdateMessage(message Message) {
 
 	for i, channel := range s.Channels {
 		if channel.ID.Equals(message.ChannelID) {
+			// try to get out early if the message doesnt exist, just add it
+			if channel.GetMessage(message.ID) == nil {
+				s.Channels[i].Messages = append(s.Channels[i].Messages, message)
+				return
+			}
+
+			// scan babyyyy
 			for j, m := range channel.Messages {
 				if m.ID.Equals(message.ID) {
 					s.Channels[i].Messages[j] = message
@@ -96,139 +103,184 @@ func (s *Server) DeleteMessage(channelId, messageId Snowflake) {
 }
 
 func (s *Server) AddRole(role Role) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.Roles = append(s.Roles, role)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Roles = append(s.Roles, role)
 }
 
 func (s *Server) UpdateRole(roleId Snowflake, newRole Role) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, role := range s.Roles {
-        if role.ID.Equals(roleId) {
-            s.Roles[i] = newRole
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, role := range s.Roles {
+		if role.ID.Equals(roleId) {
+			s.Roles[i] = newRole
+			return
+		}
+	}
 }
 
 func (s *Server) DeleteRole(roleId Snowflake) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, role := range s.Roles {
-        if role.ID.Equals(roleId) {
-            s.Roles = append(s.Roles[:i], s.Roles[i+1:]...)
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, role := range s.Roles {
+		if role.ID.Equals(roleId) {
+			s.Roles = append(s.Roles[:i], s.Roles[i+1:]...)
+			return
+		}
+	}
 }
 
 func (s *Server) AddMember(member GuildMember) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.Members = append(s.Members, member)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Members = append(s.Members, member)
 }
 
 func (s *Server) GetMember(memberId Snowflake) *GuildMember {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-    for _, member := range s.Members {
-        if member.User.ID.Equals(memberId) {
-            return &member
-        }
-    }
-    return nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, member := range s.Members {
+		if member.User.ID.Equals(memberId) {
+			return &member
+		}
+	}
+	return nil
+}
+
+func (s *Server) GetMembers() []GuildMember {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Members
 }
 
 func (s *Server) UpdateMember(memberId Snowflake, newMember GuildMember) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, member := range s.Members {
-        if member.User.ID.Equals(memberId) {
-            s.Members[i] = newMember
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, member := range s.Members {
+		if member.User.ID.Equals(memberId) {
+			s.Members[i] = newMember
+			return
+		}
+	}
 }
 
 func (s *Server) DeleteMember(memberId Snowflake) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, member := range s.Members {
-        if member.User.ID.Equals(memberId) {
-            s.Members = append(s.Members[:i], s.Members[i+1:]...)
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, member := range s.Members {
+		if member.User.ID.Equals(memberId) {
+			s.Members = append(s.Members[:i], s.Members[i+1:]...)
+			return
+		}
+	}
 }
 
 func (s *Server) HasMember(memberId Snowflake) bool {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-    for _, member := range s.Members {
-        if member.User.ID.Equals(memberId) {
-            return true
-        }
-    }
-    return false
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, member := range s.Members {
+		if member.User.ID.Equals(memberId) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) AddChannel(channel Channel) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.Channels = append(s.Channels, channel)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Channels = append(s.Channels, channel)
+}
+
+func (s *Server) GetChannel(channelId Snowflake) *Channel {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, channel := range s.Channels {
+		if channel.ID.Equals(channelId) {
+			return &channel
+		}
+	}
+	return nil
 }
 
 func (s *Server) UpdateChannel(channelId Snowflake, newChannel Channel) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, channel := range s.Channels {
-        if channel.ID.Equals(channelId) {
-            s.Channels[i] = newChannel
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, channel := range s.Channels {
+		if channel.ID.Equals(channelId) {
+			s.Channels[i] = newChannel
+			return
+		}
+	}
 }
 
 func (s *Server) DeleteChannel(channelId Snowflake) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, channel := range s.Channels {
-        if channel.ID.Equals(channelId) {
-            s.Channels = append(s.Channels[:i], s.Channels[i+1:]...)
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, channel := range s.Channels {
+		if channel.ID.Equals(channelId) {
+			s.Channels = append(s.Channels[:i], s.Channels[i+1:]...)
+			return
+		}
+	}
 }
 
 func (s *Server) AddPresence(presence PresenceUpdate) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    s.Presences = append(s.Presences, presence)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Presences = append(s.Presences, presence)
 }
 
 func (s *Server) UpdatePresence(userId Snowflake, newPresence PresenceUpdate) {
-    s.mu.Lock()
-    defer s.mu.Unlock()
-    for i, presence := range s.Presences {
-        if presence.User.ID.Equals(userId) {
-            s.Presences[i] = newPresence
-            return
-        }
-    }
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, presence := range s.Presences {
+		if presence.User.ID.Equals(userId) {
+			s.Presences[i] = newPresence
+			return
+		}
+	}
 }
 
 func (s *Server) HasPresence(userId Snowflake) bool {
-    s.mu.RLock()
-    defer s.mu.RUnlock()
-    for _, presence := range s.Presences {
-        if presence.User.ID.Equals(userId) {
-            return true
-        }
-    }
-    return false
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, presence := range s.Presences {
+		if presence.User.ID.Equals(userId) {
+			return true
+		}
+	}
+	return false
 }
 
+func (s *Server) GetVoiceState(userId Snowflake) *VoiceState {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, voiceState := range s.VoiceStates {
+		if voiceState.UserID.Equals(userId) {
+			return &voiceState
+		}
+	}
+	return nil
+}
+
+func (s *Server) AddVoiceState(voiceState VoiceState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.VoiceStates = append(s.VoiceStates, voiceState)
+}
+
+func (s *Server) UpdateVoiceState(voiceState VoiceState) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, vs := range s.VoiceStates {
+		if vs.UserID.Equals(voiceState.UserID) {
+			s.VoiceStates[i] = voiceState
+			return
+		}
+	}
+	s.VoiceStates = append(s.VoiceStates, voiceState)
+}
 
 type PresenceUpdate struct {
 	User         User           `json:"user"`

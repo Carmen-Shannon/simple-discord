@@ -1,6 +1,9 @@
 package structs
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type ChannelType int
 
@@ -80,6 +83,66 @@ type Channel struct {
 	DefaultSortOrder       *SortOrderType         `json:"default_sort_order,omitempty"`
 	DefaultForumLayout     *ForumLayoutType       `json:"default_forum_layout,omitempty"`
 	Messages               []Message              `json:"-"`
+	Typing                 *TypingChannel          `json:"-"`
+}
+
+func (c *Channel) GetMessage(messageId Snowflake) *Message {
+	for _, message := range c.Messages {
+		if message.ID.Equals(messageId) {
+			return &message
+		}
+	}
+	return nil
+}
+
+type TypingChannel struct {
+	Users  map[string]*Snowflake       `json:"-"`
+	mu     sync.RWMutex           `json:"-"`
+	timers map[string]*time.Timer `json:"-"`
+}
+
+func NewTypingChannel() *TypingChannel {
+	return &TypingChannel{
+		Users:  make(map[string]*Snowflake),
+		timers: make(map[string]*time.Timer),
+	}
+}
+
+func (t *TypingChannel) GetUserId(userId Snowflake) *Snowflake {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	for _, user := range t.Users {
+		if user.Equals(userId) {
+			return user
+		}
+	}
+
+	return nil
+}
+
+func (t *TypingChannel) AddUser(user Snowflake) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.Users[user.ToString()] = &user
+	timer := t.startTimeout(user)
+	t.timers[user.ToString()] = timer
+}
+
+func (t *TypingChannel) DeleteUser(user Snowflake) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	delete(t.Users, user.ToString())
+	t.timers[user.ToString()].Stop()
+	delete(t.timers, user.ToString())
+}
+
+func (t *TypingChannel) startTimeout(user Snowflake) *time.Timer {
+	return time.AfterFunc(15*time.Second, func() {
+		t.DeleteUser(user)
+	})
 }
 
 type Overwrite struct {
