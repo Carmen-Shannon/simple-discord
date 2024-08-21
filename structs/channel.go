@@ -79,6 +79,7 @@ type Channel struct {
 	DefaultThreadRateLimit *int                   `json:"default_thread_rate_limit,omitempty"`
 	DefaultSortOrder       *SortOrderType         `json:"default_sort_order,omitempty"`
 	DefaultForumLayout     *ForumLayoutType       `json:"default_forum_layout,omitempty"`
+	Messages               []Message              `json:"-"`
 }
 
 type Overwrite struct {

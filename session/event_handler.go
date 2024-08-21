@@ -46,9 +46,9 @@ func NewEventHandler() *EventHandler {
 			"GUILD_ROLE_UPDATE":         handleGuildRoleUpdateEvent,
 			"GUILD_ROLE_DELETE":         handleGuildRoleDeleteEvent,
 			"MESSAGE_CREATE":            handleMessageCreateEvent,
-			"MESSAGE_UPDATE":            nil, //placeholder
-			"MESSAGE_DELETE":            nil, //placeholder
-			"MESSAGE_BULK_DELETE":       nil, //placeholder
+			"MESSAGE_UPDATE":            handleMessageUpdateEvent,
+			"MESSAGE_DELETE":            handleMessageDeleteEvent,
+			"MESSAGE_BULK_DELETE":       handleMessageBulkDeleteEvent,
 			"REACTION_ADD":              nil, //placeholder
 			"REACTION_REMOVE":           nil, //placeholder
 			"REACTION_REMOVE_ALL":       nil, //placeholder
@@ -304,14 +304,18 @@ func handleResumedEvent(s *Session, p gateway.Payload) error {
 func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
 	if guildCreateEvent, ok := p.Data.(receiveevents.GuildCreateEvent); ok {
 		if guildCreateEvent.Unavailable != nil && !*guildCreateEvent.Unavailable {
-			server := structs.Server(*guildCreateEvent.Server)
-			s.AddServer(server)
+			server := structs.NewServer(guildCreateEvent.Guild)
+			if err := util.UpdateFields(server, guildCreateEvent.Server); err != nil {
+				return err
+			}
+			s.AddServer(*server)
 		}
 	} else if guildCreateUnavailableEvent, ok := p.Data.(receiveevents.GuildCreateUnavailableEvent); ok {
-		server := structs.Server{}
-		server.ID = guildCreateUnavailableEvent.ID
+		unavailableGuild := &structs.Guild{}
+		unavailableGuild.ID = guildCreateUnavailableEvent.ID
+		server := structs.NewServer(unavailableGuild)
 		server.Unavailable = &guildCreateUnavailableEvent.Unavailable
-		s.AddServer(server)
+		s.AddServer(*server)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -343,10 +347,11 @@ func handleGuildDeleteEvent(s *Session, p gateway.Payload) error {
 			return errors.New("server not found")
 		}
 
-		unavailableServer := structs.Server{}
-		unavailableServer.ID = guildDeleteEvent.ID
-		unavailableServer.Unavailable = &guildDeleteEvent.Unavailable
-		s.AddServer(unavailableServer)
+		unavailableGuild := &structs.Guild{}
+		unavailableGuild.ID = guildDeleteEvent.ID
+		server := structs.NewServer(unavailableGuild)
+		server.Unavailable = &guildDeleteEvent.Unavailable
+		s.AddServer(*server)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -523,9 +528,61 @@ func handleGuildRoleDeleteEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
-	if _, ok := p.Data.(receiveevents.MessageCreateEvent); ok {
+	if messageCreateEvent, ok := p.Data.(receiveevents.MessageCreateEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messageCreateEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
 
-		fmt.Println("MESSAGE CREATE EVENT NOT IMPLEMENTED")
+		server.AddMessage(*messageCreateEvent.Message)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
+	if messageUpdateEvent, ok := p.Data.(receiveevents.MessageUpdateEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messageUpdateEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		server.UpdateMessage(*messageUpdateEvent.Message)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageDeleteEvent(s *Session, p gateway.Payload) error {
+	if messageDeleteEvent, ok := p.Data.(receiveevents.MessageDeleteEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messageDeleteEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		server.DeleteMessage(messageDeleteEvent.ChannelID, messageDeleteEvent.ID)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleMessageBulkDeleteEvent(s *Session, p gateway.Payload) error {
+	if messageBulkDeleteEvent, ok := p.Data.(receiveevents.MessageDeleteBulkEvent); ok {
+		servers := s.GetServers()
+		server, exists := servers[messageBulkDeleteEvent.GuildID.ToString()]
+		if !exists {
+			return errors.New("server not found")
+		}
+
+		for _, id := range messageBulkDeleteEvent.IDs {
+			server.DeleteMessage(messageBulkDeleteEvent.ChannelID, id)
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
