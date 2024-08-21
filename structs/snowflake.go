@@ -2,7 +2,6 @@ package structs
 
 import (
 	"encoding/json"
-	"errors"
 	"strconv"
 	"time"
 )
@@ -15,6 +14,10 @@ type Snowflake struct {
 	WorkerID  *uint8     `json:"worker_id,omitempty"`
 	ProcessID *uint8     `json:"process_id,omitempty"`
 	Increment *uint8     `json:"increment,omitempty"`
+}
+
+func (s *Snowflake) Equals(other Snowflake) bool {
+	return s.ID == other.ID
 }
 
 func (s *Snowflake) ToString() string {
@@ -46,7 +49,8 @@ func (s *Snowflake) UnmarshalJSON(data []byte) error {
 			return err
 		}
 	} else if id == 0 {
-		return errors.New("ID cannot be 0")
+		s.ID = id
+		return nil
 	}
 
 	s.ID = id

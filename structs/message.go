@@ -1,8 +1,12 @@
 package structs
 
-import "time"
+import (
+	"encoding/json"
+	"errors"
+	"time"
+)
 
-type AttachmentFlag int
+type AttachmentFlag int64
 
 const (
 	IsRemix AttachmentFlag = 1 << 2
@@ -16,7 +20,7 @@ const (
 	EveryoneMentionsType AllowedMentionType = "everyone"
 )
 
-type MessageFlag int
+type MessageFlag int64
 
 const (
 	CrossPostedMessageFlag              MessageFlag = 1 << 0
@@ -73,80 +77,97 @@ type MessageType struct {
 	Deletable bool   `json:"deletable"`
 }
 
-func GetMessageType(messageType string) *MessageType {
-	switch messageType {
-	case "DEFAULT":
-		return &MessageType{Type: messageType, Value: 0, Deletable: true}
-	case "RECIPIENT_ADD":
-		return &MessageType{Type: messageType, Value: 1, Deletable: false}
-	case "RECIPIENT_REMOVE":
-		return &MessageType{Type: messageType, Value: 2, Deletable: false}
-	case "CALL":
-		return &MessageType{Type: messageType, Value: 3, Deletable: false}
-	case "CHANNEL_NAME_CHANGE":
-		return &MessageType{Type: messageType, Value: 4, Deletable: false}
-	case "CHANNEL_ICON_CHANGE":
-		return &MessageType{Type: messageType, Value: 5, Deletable: false}
-	case "CHANNEL_PINNED_MESSAGE":
-		return &MessageType{Type: messageType, Value: 6, Deletable: true}
-	case "USER_JOIN":
-		return &MessageType{Type: messageType, Value: 7, Deletable: true}
-	case "GUILD_BOOST":
-		return &MessageType{Type: messageType, Value: 8, Deletable: true}
-	case "GUILD_BOOST_TIER_1":
-		return &MessageType{Type: messageType, Value: 9, Deletable: true}
-	case "GUILD_BOOST_TIER_2":
-		return &MessageType{Type: messageType, Value: 10, Deletable: true}
-	case "GUILD_BOOST_TIER_3":
-		return &MessageType{Type: messageType, Value: 11, Deletable: true}
-	case "CHANNEL_FOLLOW_ADD":
-		return &MessageType{Type: messageType, Value: 12, Deletable: true}
-	case "GUILD_DISCOVERY_DISQUALIFIED":
-		return &MessageType{Type: messageType, Value: 14, Deletable: true}
-	case "GUILD_DISCOVERY_REQUALIFIED":
-		return &MessageType{Type: messageType, Value: 15, Deletable: true}
-	case "GUILD_DISCOVERY_GRACE_PERIOD_INITIAL_WARNING":
-		return &MessageType{Type: messageType, Value: 16, Deletable: true}
-	case "GUILD_DISCOVERY_GRACE_PERIOD_FINAL_WARNING":
-		return &MessageType{Type: messageType, Value: 17, Deletable: true}
-	case "THREAD_CREATED":
-		return &MessageType{Type: messageType, Value: 18, Deletable: true}
-	case "REPLY":
-		return &MessageType{Type: messageType, Value: 19, Deletable: true}
-	case "CHAT_INPUT_COMMAND":
-		return &MessageType{Type: messageType, Value: 20, Deletable: true}
-	case "THREAD_STARTER_MESSAGE":
-		return &MessageType{Type: messageType, Value: 21, Deletable: false}
-	case "GUILD_INVITE_REMINDER":
-		return &MessageType{Type: messageType, Value: 22, Deletable: true}
-	case "CONTEXT_MENU_COMMAND":
-		return &MessageType{Type: messageType, Value: 23, Deletable: true}
-	case "AUTO_MODERATION_ACTION":
-		return &MessageType{Type: messageType, Value: 24, Deletable: true}
-	case "ROLE_SUBSCRIPTION_PURCHASE":
-		return &MessageType{Type: messageType, Value: 25, Deletable: true}
-	case "INTERACTION_PREMIUM_UPSELL":
-		return &MessageType{Type: messageType, Value: 26, Deletable: true}
-	case "STAGE_START":
-		return &MessageType{Type: messageType, Value: 27, Deletable: true}
-	case "STAGE_END":
-		return &MessageType{Type: messageType, Value: 28, Deletable: true}
-	case "STAGE_SPEAKER":
-		return &MessageType{Type: messageType, Value: 29, Deletable: true}
-	case "STAGE_TOPIC":
-		return &MessageType{Type: messageType, Value: 31, Deletable: true}
-	case "GUILD_APPLICATION_PREMIUM_SUBSCRIPTION":
-		return &MessageType{Type: messageType, Value: 32, Deletable: true}
-	case "GUILD_INCIDENT_ALERT_MODE_ENABLED":
-		return &MessageType{Type: messageType, Value: 36, Deletable: true}
-	case "GUILD_INCIDENT_ALERT_MODE_DISABLED":
-		return &MessageType{Type: messageType, Value: 37, Deletable: true}
-	case "GUILD_INCIDENT_REPORT_RAID":
-		return &MessageType{Type: messageType, Value: 38, Deletable: true}
-	case "GUILD_INCIDENT_REPORT_FALSE_ALARM":
-		return &MessageType{Type: messageType, Value: 39, Deletable: true}
-	case "PURCHASE_NOTIFICATION":
-		return &MessageType{Type: messageType, Value: 44, Deletable: true}
+func (m *MessageType) UnmarshalJSON(data []byte) error {
+	var messageType int
+	if err := json.Unmarshal(data, &messageType); err != nil {
+		return err
+	}
+
+	m = GetMessageType(messageType)
+	if m == nil {
+		return errors.New("invalid message type")
+	}
+	return nil
+}
+
+func (m *MessageType) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Value)
+}
+
+func GetMessageType(messageValue int) *MessageType {
+	switch messageValue {
+	case 0:
+		return &MessageType{Type: "DEFAULT", Value: messageValue, Deletable: true}
+	case 1:
+		return &MessageType{Type: "RECIPIENT_ADD", Value: messageValue, Deletable: false}
+	case 2:
+		return &MessageType{Type: "RECIPIENT_REMOVE", Value: messageValue, Deletable: false}
+	case 3:
+		return &MessageType{Type: "CALL", Value: messageValue, Deletable: false}
+	case 4:
+		return &MessageType{Type: "CHANNEL_NAME_CHANGE", Value: messageValue, Deletable: false}
+	case 5:
+		return &MessageType{Type: "CHANNEL_ICON_CHANGE", Value: messageValue, Deletable: false}
+	case 6:
+		return &MessageType{Type: "CHANNEL_PINNED_MESSAGE", Value: messageValue, Deletable: true}
+	case 7:
+		return &MessageType{Type: "USER_JOIN", Value: messageValue, Deletable: true}
+	case 8:
+		return &MessageType{Type: "GUILD_BOOST", Value: messageValue, Deletable: true}
+	case 9:
+		return &MessageType{Type: "GUILD_BOOST_TIER_1", Value: messageValue, Deletable: true}
+	case 10:
+		return &MessageType{Type: "GUILD_BOOST_TIER_2", Value: messageValue, Deletable: true}
+	case 11:
+		return &MessageType{Type: "GUILD_BOOST_TIER_3", Value: messageValue, Deletable: true}
+	case 12:
+		return &MessageType{Type: "CHANNEL_FOLLOW_ADD", Value: messageValue, Deletable: true}
+	case 14:
+		return &MessageType{Type: "GUILD_DISCOVERY_DISQUALIFIED", Value: messageValue, Deletable: true}
+	case 15:
+		return &MessageType{Type: "GUILD_DISCOVERY_REQUALIFIED", Value: messageValue, Deletable: true}
+	case 16:
+		return &MessageType{Type: "GUILD_DISCOVERY_GRACE_PERIOD_INITIAL_WARNING", Value: messageValue, Deletable: true}
+	case 17:
+		return &MessageType{Type: "GUILD_DISCOVERY_GRACE_PERIOD_FINAL_WARNING", Value: messageValue, Deletable: true}
+	case 18:
+		return &MessageType{Type: "THREAD_CREATED", Value: messageValue, Deletable: true}
+	case 19:
+		return &MessageType{Type: "REPLY", Value: messageValue, Deletable: true}
+	case 20:
+		return &MessageType{Type: "CHAT_INPUT_COMMAND", Value: messageValue, Deletable: true}
+	case 21:
+		return &MessageType{Type: "THREAD_STARTER_MESSAGE", Value: messageValue, Deletable: false}
+	case 22:
+		return &MessageType{Type: "GUILD_INVITE_REMINDER", Value: messageValue, Deletable: true}
+	case 23:
+		return &MessageType{Type: "CONTEXT_MENU_COMMAND", Value: messageValue, Deletable: true}
+	case 24:
+		return &MessageType{Type: "AUTO_MODERATION_ACTION", Value: messageValue, Deletable: true}
+	case 25:
+		return &MessageType{Type: "ROLE_SUBSCRIPTION_PURCHASE", Value: messageValue, Deletable: true}
+	case 26:
+		return &MessageType{Type: "INTERACTION_PREMIUM_UPSELL", Value: messageValue, Deletable: true}
+	case 27:
+		return &MessageType{Type: "STAGE_START", Value: messageValue, Deletable: true}
+	case 28:
+		return &MessageType{Type: "STAGE_END", Value: messageValue, Deletable: true}
+	case 29:
+		return &MessageType{Type: "STAGE_SPEAKER", Value: messageValue, Deletable: true}
+	case 31:
+		return &MessageType{Type: "STAGE_TOPIC", Value: messageValue, Deletable: true}
+	case 32:
+		return &MessageType{Type: "GUILD_APPLICATION_PREMIUM_SUBSCRIPTION", Value: messageValue, Deletable: true}
+	case 36:
+		return &MessageType{Type: "GUILD_INCIDENT_ALERT_MODE_ENABLED", Value: messageValue, Deletable: true}
+	case 37:
+		return &MessageType{Type: "GUILD_INCIDENT_ALERT_MODE_DISABLED", Value: messageValue, Deletable: true}
+	case 38:
+		return &MessageType{Type: "GUILD_INCIDENT_REPORT_RAID", Value: messageValue, Deletable: true}
+	case 39:
+		return &MessageType{Type: "GUILD_INCIDENT_REPORT_FALSE_ALARM", Value: messageValue, Deletable: true}
+	case 44:
+		return &MessageType{Type: "PURCHASE_NOTIFICATION", Value: messageValue, Deletable: true}
 	default:
 		return nil
 	}
@@ -229,7 +250,7 @@ type Message struct {
 	Activity             *MessageActivity            `json:"activity,omitempty"`
 	Application          *Application                `json:"application,omitempty"`
 	ApplicationID        *Snowflake                  `json:"application_id,omitempty"`
-	Flags                *MessageFlag                `json:"flags,omitempty"`
+	Flags                Bitfield[MessageFlag]       `json:"flags,omitempty"`
 	MessageReference     *MessageReference           `json:"message_reference,omitempty"`
 	MessageSnapshots     []MessageSnapshot           `json:"message_snapshots"`
 	ReferencedMessage    *Message                    `json:"referenced_message,omitempty"`
@@ -271,20 +292,20 @@ type ChannelMention struct {
 }
 
 type Attachment struct {
-	ID              Snowflake       `json:"id"`
-	FileName        string          `json:"file_name"`
-	Title           *string         `json:"title,omitempty"`
-	Description     *string         `json:"description,omitempty"`
-	ContentType     *string         `json:"content_type,omitempty"`
-	Size            int             `json:"size"`
-	URL             string          `json:"url"`
-	ProxyURL        string          `json:"proxy_url"`
-	Height          *int            `json:"height,omitempty"`
-	Width           *int            `json:"width,omitempty"`
-	Ephemeral       *bool           `json:"ephemeral,omitempty"`
-	DurationSeconds *float64        `json:"duration_seconds,omitempty"`
-	Waveform        *string         `json:"waveform,omitempty"`
-	Flags           *AttachmentFlag `json:"flags,omitempty"`
+	ID              Snowflake                 `json:"id"`
+	FileName        string                    `json:"file_name"`
+	Title           *string                   `json:"title,omitempty"`
+	Description     *string                   `json:"description,omitempty"`
+	ContentType     *string                   `json:"content_type,omitempty"`
+	Size            int                       `json:"size"`
+	URL             string                    `json:"url"`
+	ProxyURL        string                    `json:"proxy_url"`
+	Height          *int                      `json:"height,omitempty"`
+	Width           *int                      `json:"width,omitempty"`
+	Ephemeral       *bool                     `json:"ephemeral,omitempty"`
+	DurationSeconds *float64                  `json:"duration_seconds,omitempty"`
+	Waveform        *string                   `json:"waveform,omitempty"`
+	Flags           *Bitfield[AttachmentFlag] `json:"flags,omitempty"`
 }
 
 type Embed struct {

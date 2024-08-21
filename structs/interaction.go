@@ -54,12 +54,12 @@ const (
 )
 
 type InteractionResponseData struct {
-	TTS             *bool            `json:"tts,omitempty"`
-	Content         *string          `json:"content,omitempty"`
-	Embeds          []Embed          `json:"embeds"`
-	AllowedMentions AllowedMentions  `json:"allowed_mentions"`
-	Flags           MessageFlag      `json:"flags"`
-	Components      MessageComponent `json:"components"`
+	TTS             *bool                 `json:"tts,omitempty"`
+	Content         *string               `json:"content,omitempty"`
+	Embeds          []Embed               `json:"embeds"`
+	AllowedMentions AllowedMentions       `json:"allowed_mentions"`
+	Flags           Bitfield[MessageFlag] `json:"flags"`
+	Components      MessageComponent      `json:"components"`
 }
 
 type Interaction struct {

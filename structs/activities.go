@@ -1,5 +1,7 @@
 package structs
 
+import "encoding/json"
+
 type ActivityType int
 
 const (
@@ -11,7 +13,7 @@ const (
 	CompetingActivity ActivityType = 5
 )
 
-type ActivityFlag int
+type ActivityFlag int64
 
 const (
 	ActivityInstance            ActivityFlag = 1 << 0
@@ -26,21 +28,21 @@ const (
 )
 
 type Activity struct {
-	Name          string       `json:"name"`
-	Type          ActivityType `json:"type"`
-	URL           *string      `json:"url"`
-	CreatedAt     int          `json:"created_at"`
-	Timestamps    *Timestamps  `json:"timestamps"`
-	ApplicationId *Snowflake   `json:"application_id"` // TODO this should actually be a Snowflake, which is just a string representation of a bigint
-	Details       *string      `json:"details"`
-	State         *string      `json:"state"`
-	Emoji         *Emoji       `json:"emoji"`
-	Party         *Party       `json:"party"`
-	Assets        *Assets      `json:"assets"`
-	Secrets       *Secrets     `json:"secrets"`
-	Instance      *bool        `json:"instance"`
-	Flags         *int         `json:"flags"` // TODO this is something different than just an integer
-	Buttons       *[]Button    `json:"buttons"`
+	Name          string                  `json:"name"`
+	Type          ActivityType            `json:"type"`
+	URL           *string                 `json:"url"`
+	CreatedAt     int                     `json:"created_at"`
+	Timestamps    *Timestamps             `json:"timestamps"`
+	ApplicationId *Snowflake              `json:"application_id"`
+	Details       *string                 `json:"details"`
+	State         *string                 `json:"state"`
+	Emoji         *Emoji                  `json:"emoji"`
+	Party         *Party                  `json:"party"`
+	Assets        *Assets                 `json:"assets"`
+	Secrets       *Secrets                `json:"secrets"`
+	Instance      *bool                   `json:"instance"`
+	Flags         *Bitfield[ActivityFlag] `json:"flags"`
+	Buttons       []Button                `json:"buttons"`
 }
 
 type Timestamps struct {
@@ -50,7 +52,7 @@ type Timestamps struct {
 
 type Emoji struct {
 	Name     string     `json:"name"`
-	ID       *Snowflake `json:"id"` // TODO this should actually be a Snowflake, which is just a string representation of a bigint
+	ID       *Snowflake `json:"id"`
 	Animated *bool      `json:"animated"`
 }
 
@@ -73,6 +75,30 @@ type Secrets struct {
 }
 
 type Button struct {
-	Label string `json:"label"`
-	URL   string `json:"url"`
+	Label        string  `json:"label"`
+	ReceiveLabel string  `json:"-"`
+	URL          *string `json:"url,omitempty"`
+}
+
+func (b *Button) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal data as a string
+	var label string
+	if err := json.Unmarshal(data, &label); err == nil {
+		b.ReceiveLabel = label
+		b.Label = label
+		return nil
+	}
+
+	// Try to unmarshal data as an object
+	type Alias Button
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(b),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	return nil
 }

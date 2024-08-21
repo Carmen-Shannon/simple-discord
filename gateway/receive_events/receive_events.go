@@ -225,19 +225,19 @@ type GuildMemberRemoveEvent struct {
 }
 
 type GuildMemberUpdateEvent struct {
-	GuildID                    structs.Snowflake             `json:"guild_id"`
-	Roles                      []structs.Snowflake           `json:"roles"`
-	User                       structs.User                  `json:"user"`
-	Nick                       *string                       `json:"nick,omitempty"`
-	Avatar                     *string                       `json:"avatar,omitempty"`
-	JoinedAt                   *time.Time                    `json:"joined_at,omitempty"`
-	PremiumSince               *time.Time                    `json:"premium_since,omitempty"`
-	IsDeafened                 *bool                         `json:"deaf,omitempty"`
-	IsMuted                    *bool                         `json:"mute,omitempty"`
-	IsPending                  *bool                         `json:"pending,omitempty"`
-	CommunicationDisabledUntil *time.Time                    `json:"communication_disabled_until,omitempty"`
-	Flags                      structs.GuildMemberFlag       `json:"flags"`
-	AvatarDecorationData       *structs.AvatarDecorationData `json:"avatar_decoration_data,omitempty"`
+	GuildID                    structs.Snowflake                         `json:"guild_id"`
+	Roles                      []structs.Snowflake                       `json:"roles"`
+	User                       structs.User                              `json:"user"`
+	Nick                       *string                                   `json:"nick,omitempty"`
+	Avatar                     *string                                   `json:"avatar,omitempty"`
+	JoinedAt                   *time.Time                                `json:"joined_at,omitempty"`
+	PremiumSince               *time.Time                                `json:"premium_since,omitempty"`
+	IsDeafened                 *bool                                     `json:"deaf,omitempty"`
+	IsMuted                    *bool                                     `json:"mute,omitempty"`
+	IsPending                  *bool                                     `json:"pending,omitempty"`
+	CommunicationDisabledUntil *time.Time                                `json:"communication_disabled_until,omitempty"`
+	Flags                      structs.Bitfield[structs.GuildMemberFlag] `json:"flags"`
+	AvatarDecorationData       *structs.AvatarDecorationData             `json:"avatar_decoration_data,omitempty"`
 }
 
 type GuildRoleCreateEvent struct {
@@ -247,7 +247,7 @@ type GuildRoleCreateEvent struct {
 
 type GuildRoleUpdateEvent struct {
 	GuildID structs.Snowflake `json:"guild_id"`
-	RoleID  structs.Snowflake `json:"role_id"`
+	Role    structs.Role      `json:"role"`
 }
 
 type GuildRoleDeleteEvent struct {

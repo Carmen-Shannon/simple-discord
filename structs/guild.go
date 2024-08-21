@@ -75,7 +75,7 @@ const (
 	AgeRestrictedNSFW NSFWLevel = 3
 )
 
-type SystemChannelFlag int
+type SystemChannelFlag int64
 
 const (
 	SurpressJoinNotificationsFlag                           SystemChannelFlag = 1 << 0
@@ -130,7 +130,7 @@ type Guild struct {
 	MFALevel                    MFALevel                        `json:"mfa_level"`
 	ApplicationID               *Snowflake                      `json:"application_id,omitempty"`
 	SystemChannelID             *Snowflake                      `json:"system_channel_id,omitempty"`
-	SystemChannelFlags          SystemChannelFlag               `json:"system_channel_flags"`
+	SystemChannelFlags          Bitfield[SystemChannelFlag]     `json:"system_channel_flags"`
 	RulesChannelID              *Snowflake                      `json:"rules_channel_id,omitempty"`
 	MaxPresences                *int                            `json:"max_presences,omitempty"`
 	MaxMembers                  *int                            `json:"max_members,omitempty"`

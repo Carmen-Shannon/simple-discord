@@ -20,7 +20,7 @@ type Application struct {
 	PrimarySKUID                   *Snowflake                                                      `json:"primary_sku_id,omitempty"`
 	Slug                           *string                                                         `json:"slug,omitempty"`
 	CoverImage                     *string                                                         `json:"cover_image,omitempty"`
-	Flags                          ApplicationFlag                                                 `json:"flags"`
+	Flags                          Bitfield[ApplicationFlag]                                       `json:"flags"`
 	ApproximateGuildCount          int                                                             `json:"approximate_guild_count"`
 	RedirectURIs                   []string                                                        `json:"redirect_uris,omitempty"`
 	InteractionEndpointsURL        *string                                                         `json:"interaction_endpoints_url,omitempty"`
@@ -42,7 +42,7 @@ type ApplicationIntegrationTypeConfig struct {
 	OAuth2InstallParams *InstallParams `json:"oauth2_install_params,omitempty"`
 }
 
-type ApplicationFlag int
+type ApplicationFlag int64
 
 const (
 	ApplicationAutoModerationOnRuleCreateBadge ApplicationFlag = 1 << 6

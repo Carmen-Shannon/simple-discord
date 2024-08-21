@@ -30,7 +30,7 @@ type Session struct {
 	ResumeURL     *string
 	Token         *string
 	Intents       []structs.Intent
-	Servers       map[structs.Snowflake]structs.Server
+	Servers       map[string]structs.Server
 	helloReceived chan struct{}
 	readChan      chan []byte
 	writeChan     chan []byte
@@ -85,6 +85,7 @@ func (s *Session) Listen() {
 
 		if err := s.EventHandler.HandleEvent(s, payload); err != nil {
 			s.errorChan <- fmt.Errorf("error handling event: %v", err)
+			fmt.Println(payload.ToString())
 			continue
 		}
 	}
@@ -192,7 +193,7 @@ func (s *Session) ResumeSession() error {
 	s.SetConn(ws)
 
 	// clean out the cached Guilds from the previous session
-	s.SetServers(make(map[structs.Snowflake]structs.Server))
+	s.SetServers(make(map[string]structs.Server))
 
 	// Exit() already closed the channels, so we are re-opening them here
 	s.helloReceived = make(chan struct{})
@@ -222,7 +223,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.SetToken(&token)
 	sess.SetEventHandler(NewEventHandler())
 	sess.SetIntents(intents)
-	sess.SetServers(make(map[structs.Snowflake]structs.Server))
+	sess.SetServers(make(map[string]structs.Server))
 	sess.helloReceived = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
@@ -447,14 +448,14 @@ func (s *Session) SetIntents(intents []structs.Intent) {
 	s.Intents = intents
 }
 
-func (s *Session) GetServers() map[structs.Snowflake]structs.Server {
+func (s *Session) GetServers() map[string]structs.Server {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
 	return s.Servers
 }
 
-func (s *Session) SetServers(servers map[structs.Snowflake]structs.Server) {
+func (s *Session) SetServers(servers map[string]structs.Server) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -478,5 +479,5 @@ func (s *Session) AddServer(server structs.Server) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	s.Servers[server.ID] = server
+	s.Servers[server.ID.ToString()] = server
 }
