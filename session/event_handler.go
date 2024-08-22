@@ -38,6 +38,7 @@ func NewEventHandler() *EventHandler {
 			"GUILD_BAN_REMOVE":              handleGuildBanRemoveEvent,
 			"GUILD_EMOJIS_UPDATE":           handleGuildEmojisUpdateEvent,
 			"GUILD_INTEGRATIONS_UPDATE":     handleGuildIntegrationsUpdateEvent,
+			"GUILD_AUDIT_LOG_ENTRY_CREATE":  handleGuildAuditLogEntryCreateEvent,
 			"GUILD_MEMBER_ADD":              handleGuildMemberAddEvent,
 			"GUILD_MEMBER_REMOVE":           handleGuildMemberRemoveEvent,
 			"GUILD_MEMBER_UPDATE":           handleGuildMemberUpdateEvent,
@@ -60,6 +61,7 @@ func NewEventHandler() *EventHandler {
 			"VOICE_CHANNEL_EFFECT_SEND":     handleVoiceChannelEffectSendEvent,
 			"VOICE_STATE_UPDATE":            handleVoiceStateUpdateEvent,
 			"VOICE_SERVER_UPDATE":           handleVoiceServerUpdateEvent,
+			"VOICE_CHANNEL_STATUS_UPDATE":   handleVoiceChannelStatusUpdateEvent,
 			"WEBHOOKS_UPDATE":               handleWebhooksUpdateEvent,
 			"PRESENCE_UPDATE":               handlePresenceUpdateEvent,
 		},
@@ -887,6 +889,24 @@ func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
 func handleWebhooksUpdateEvent(s *Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.WebhooksUpdateEvent); ok {
 		fmt.Println("WEBHOOKS UPDATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR SERVER WEBHOOK UPDATE EVENTS")
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleGuildAuditLogEntryCreateEvent(s *Session, p gateway.Payload) error {
+	if _, ok := p.Data.(receiveevents.GuildAuditLogEntryCreateEvent); ok {
+		fmt.Println("GUILD AUDIT LOG ENTRY CREATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR SERVER AUDIT LOG EVENTS")
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return nil
+}
+
+func handleVoiceChannelStatusUpdateEvent(s *Session, p gateway.Payload) error {
+	if _, ok := p.Data.(receiveevents.VoiceChannelStatusUpdateEvent); ok {
+		fmt.Println("VOICE CHANNEL STATUS UPDATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR VOICE CHANNEL STATUS UPDATES ??")
 	} else {
 		return errors.New("unexpected payload data type")
 	}

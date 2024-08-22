@@ -434,11 +434,17 @@ type VoiceChannelEffectSendEvent struct {
 	ChannelID     structs.Snowflake          `json:"channel_id"`
 	GuildID       structs.Snowflake          `json:"guild_id"`
 	UserID        structs.Snowflake          `json:"user_id"`
-	Emoji         *structs.Emoji             `json:"emoji"`
+	Emoji         *structs.Emoji             `json:"emoji,omitempty"`
 	AnimationType structs.EmojiAnimationType `json:"animation_type"`
 	AnimationID   int                        `json:"animation_id"`
 	SoundID       structs.Snowflake          `json:"sound_id"`
 	SoundVolume   float64                    `json:"sound_volume"`
+}
+
+type VoiceChannelStatusUpdateEvent struct {
+	ID      *structs.Snowflake `json:"id,omitempty"`
+	GuildID *structs.Snowflake `json:"guild_id,omitempty"`
+	Status  *string            `json:"status,omitempty"`
 }
 
 type VoiceStateUpdateEvent struct {

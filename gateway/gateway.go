@@ -609,8 +609,22 @@ func handleDispatchEvent(data []byte, payload Payload) (interface{}, error) {
 		}
 		payload.Data = event
 		return event, nil
+	case "VOICE_CHANNEL_STATUS_UPDATE":
+		var event receiveevents.VoiceChannelStatusUpdateEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return nil, err
+		}
+		payload.Data = event
+		return event, nil
 	case "WEBHOOKS_UPDATE":
 		var event receiveevents.WebhooksUpdateEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return nil, err
+		}
+		payload.Data = event
+		return event, nil
+	case "GUILD_AUDIT_LOG_ENTRY_CREATE":
+		var event receiveevents.GuildAuditLogEntryCreateEvent
 		if err := json.Unmarshal(data, &event); err != nil {
 			return nil, err
 		}
