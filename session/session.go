@@ -110,6 +110,15 @@ func (s *Session) handleRead() {
 
 		for {
 			combinedBuffer := bytes.Join(buffers, nil)
+
+			// check for a close code and disconnection here
+			if len(combinedBuffer) == 2 {
+				closeCode := binary.BigEndian.Uint16(combinedBuffer)
+				s.errorChan <- fmt.Errorf("connection closed with code: %d", closeCode)
+				s.Exit(1000)
+				return
+			}
+
 			decoder := json.NewDecoder(bytes.NewReader(combinedBuffer))
 			var msg json.RawMessage
 			startOffset := len(combinedBuffer)

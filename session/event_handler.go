@@ -70,6 +70,7 @@ func NewEventHandler() *EventHandler {
 			gateway.Identify:            handleSendIdentifyEvent,
 			gateway.PresenceUpdate:      handleSendPresenceUpdateEvent,
 			gateway.VoiceStateUpdate:    handleSendVoiceStateUpdateEvent,
+			gateway.Reconnect:           handleReconnectEvent,
 			gateway.Resume:              handleSendResumeEvent,
 			gateway.RequestGuildMembers: handleSendRequestGuildMembersEvent,
 			gateway.Hello:               handleHelloEvent,
