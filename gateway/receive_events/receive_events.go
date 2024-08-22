@@ -355,7 +355,7 @@ type MessageReactionAddEvent struct {
 	Emoji           structs.Emoji        `json:"emoji"`
 	MessageAuthorID *structs.Snowflake   `json:"message_author_id,omitempty"`
 	Burst           bool                 `json:"burst"`
-	BustColors      []string             `json:"bust_colors"`
+	BurstColors     []string             `json:"burst_colors"`
 	Type            MessageReactionType  `json:"type"`
 }
 
@@ -404,6 +404,26 @@ type TypingStartEvent struct {
 	UserID    structs.Snowflake    `json:"user_id"`
 	Timestamp time.Time            `json:"timestamp"`
 	Member    *structs.GuildMember `json:"member,omitempty"`
+}
+
+func (t *TypingStartEvent) UnmarshalJSON(data []byte) error {
+	// Define a temporary struct with Timestamp as an integer
+	type Alias TypingStartEvent
+	temp := &struct {
+		Timestamp int64 `json:"timestamp"`
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	// Unmarshal into the temporary struct
+	if err := json.Unmarshal(data, temp); err != nil {
+		return err
+	}
+
+	// Convert the integer timestamp to time.Time
+	t.Timestamp = time.Unix(temp.Timestamp, 0)
+	return nil
 }
 
 type UserUpdateEvent struct {

@@ -604,10 +604,29 @@ func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
 			currentMessage = message
 		}
 
+		// check if there is already a "reaction" cached
 		currentReaction := currentMessage.GetReaction(reactionAddEvent.Emoji)
 		if currentReaction == nil {
-			return errors.New("reaction not found")
+			currentReaction = &structs.Reaction{
+				Emoji:       reactionAddEvent.Emoji,
+				Count:       0,
+				BurstColors: reactionAddEvent.BurstColors,
+			}
 		}
+
+		// check if the user reacting is the author of the message
+		if reactionAddEvent.MessageAuthorID != nil && reactionAddEvent.MessageAuthorID.Equals(reactionAddEvent.UserID) {
+			currentReaction.IsMe = true
+		}
+
+		// check if the reaction is a burst  or normal reaction
+		if reactionAddEvent.Type == receiveevents.MessageReactionBurst {
+			currentReaction.CountDetails.Burst++
+		} else if reactionAddEvent.Type == receiveevents.MessageReactionNormal {
+			currentReaction.CountDetails.Normal++
+		}
+
+		currentReaction.Count++
 		currentMessage.UpdateReactions(*currentReaction)
 
 		server.UpdateMessage(*currentMessage)
@@ -639,7 +658,7 @@ func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
 
 		currentReaction := currentMessage.GetReaction(reactionRemoveEvent.Emoji)
 		if currentReaction == nil {
-			return errors.New("reaction not found")
+			return nil
 		}
 
 		if currentReaction.Count--; currentReaction.Count == 0 {
@@ -797,6 +816,9 @@ func handleTypingStartEvent(s *Session, p gateway.Payload) error {
 			return errors.New("channel not found")
 		}
 
+		if currentChannel.Typing == nil {
+			currentChannel.Typing = structs.NewTypingChannel()
+		}
 		currentChannel.Typing.AddUser(typingStartEvent.UserID)
 		server.UpdateChannel(typingStartEvent.ChannelID, *currentChannel)
 		s.AddServer(server)
