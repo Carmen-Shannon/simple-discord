@@ -16,6 +16,45 @@ import (
 	"golang.org/x/net/websocket"
 )
 
+// handles establishing a new session with the discord gateway
+func NewSession(token string, intents []structs.Intent) (*Session, error) {
+	var sess Session
+	sess.SetToken(&token)
+	sess.SetEventHandler(NewEventHandler())
+	sess.SetIntents(intents)
+	sess.SetServers(make(map[string]structs.Server))
+	sess.helloReceived = make(chan struct{})
+	sess.stopHeartbeat = make(chan struct{})
+	sess.readChan = make(chan []byte)
+	sess.writeChan = make(chan []byte, 4096)
+	sess.errorChan = make(chan error)
+
+	ws, err := sess.dialer()
+	if err != nil {
+		return nil, err
+	}
+	sess.SetConn(ws)
+
+	// set up the goroutines to listen, read, write, and handle errors
+	go sess.Listen()
+	go sess.handleRead()
+	go sess.handleWrite()
+	go sess.handleError()
+
+	// stop here until the HELLO event is receieved
+	<-sess.helloReceived
+
+	var identifyData gateway.Payload
+	identifyData.OpCode = gateway.Identify
+
+	// let her rip tater chip
+	if err := sess.EventHandler.HandleEvent(&sess, identifyData); err != nil {
+		return nil, err
+	}
+
+	return &sess, nil
+}
+
 type Session struct {
 	Mu            sync.Mutex
 	Conn          *websocket.Conn
@@ -34,6 +73,7 @@ type Session struct {
 	errorChan     chan error
 }
 
+// closes the hearbeat and websocket connection
 func (s *Session) Exit() error {
 	if s.stopHeartbeat != nil {
 		close(s.stopHeartbeat)
@@ -45,6 +85,7 @@ func (s *Session) Exit() error {
 	return nil
 }
 
+// listens for new messages sent to the readChan and parses them before submitting them to the EventHandler
 func (s *Session) Listen() {
 	for msg := range s.readChan {
 		var payload gateway.Payload
@@ -74,6 +115,7 @@ func (s *Session) Listen() {
 	}
 }
 
+// writes messages as raw bytes to the writeChan
 func (s *Session) Write(data []byte) {
 	if len(s.writeChan) < cap(s.writeChan) {
 		s.writeChan <- data
@@ -82,6 +124,8 @@ func (s *Session) Write(data []byte) {
 	}
 }
 
+// reads frames from the gateway in increments of 1024 bytes
+// dynamically resizes the buffer array to fit the full message and writes the message to the readChan
 func (s *Session) handleRead() {
 	defer close(s.readChan)
 
@@ -129,6 +173,9 @@ func (s *Session) handleRead() {
 	}
 }
 
+// reads from the writeChan and writes the message to the gateway
+// has a retry mechanism with a delay of 2 seconds
+// after 3 retries, give up and go home
 func (s *Session) handleWrite() {
 	defer close(s.writeChan)
 
@@ -160,6 +207,7 @@ func (s *Session) handleWrite() {
 	}
 }
 
+// reads from the errorChan and logs the error
 func (s *Session) handleError() {
 	defer close(s.errorChan)
 
@@ -168,6 +216,7 @@ func (s *Session) handleError() {
 	}
 }
 
+// when a session is disconnected but can be resumed for one of many reasons, use this
 func (s *Session) ResumeSession() error {
 	// open a new connection using the cached url
 	ws, err := s.dialer()
@@ -200,6 +249,7 @@ func (s *Session) ResumeSession() error {
 	return nil
 }
 
+// when a session is disconnected and can not be resumed, use this
 func (s *Session) ReconnectSession() error {
 	ws, err := s.dialer()
 	if err != nil {
@@ -233,44 +283,7 @@ func (s *Session) ReconnectSession() error {
 	return nil
 }
 
-func NewSession(token string, intents []structs.Intent) (*Session, error) {
-	var sess Session
-	sess.SetToken(&token)
-	sess.SetEventHandler(NewEventHandler())
-	sess.SetIntents(intents)
-	sess.SetServers(make(map[string]structs.Server))
-	sess.helloReceived = make(chan struct{})
-	sess.stopHeartbeat = make(chan struct{})
-	sess.readChan = make(chan []byte)
-	sess.writeChan = make(chan []byte, 4096)
-	sess.errorChan = make(chan error)
-
-	ws, err := sess.dialer()
-	if err != nil {
-		return nil, err
-	}
-	sess.SetConn(ws)
-
-	// set up the goroutines to listen, read, write, and handle errors
-	go sess.Listen()
-	go sess.handleRead()
-	go sess.handleWrite()
-	go sess.handleError()
-
-	// stop here until the HELLO event is receieved
-	<-sess.helloReceived
-
-	var identifyData gateway.Payload
-	identifyData.OpCode = gateway.Identify
-
-	// let her rip tater chip
-	if err := sess.EventHandler.HandleEvent(&sess, identifyData); err != nil {
-		return nil, err
-	}
-
-	return &sess, nil
-}
-
+// it dial
 func (s *Session) dialer() (*websocket.Conn, error) {
 	var url string
 	if s.GetResumeURL() != nil {

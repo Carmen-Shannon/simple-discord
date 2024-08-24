@@ -48,6 +48,7 @@ func (p *Payload) ToString() string {
 	return string(jsonData)
 }
 
+// this function will take an un-typed Payload and return the appropriate type based on the OpCode
 func NewSendEvent(eventData Payload) (interface{}, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
@@ -109,6 +110,7 @@ func NewSendEvent(eventData Payload) (interface{}, error) {
 	}
 }
 
+// this function will take an un-typed payload and return the appropriate type based on the OpCode, this will handle dispatch events
 func NewReceiveEvent(eventData Payload) (interface{}, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
@@ -163,6 +165,7 @@ func NewReceiveEvent(eventData Payload) (interface{}, error) {
 	}
 }
 
+// this is where un-typed payloads with an EventName will be assigned to the appropriate struct
 func handleDispatchEvent(data []byte, payload Payload) (interface{}, error) {
 	if payload.EventName == nil {
 		return nil, errors.New("event name is nil")

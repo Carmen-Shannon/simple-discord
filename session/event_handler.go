@@ -21,6 +21,7 @@ type EventHandler struct {
 	OpCodeHandlers map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error
 }
 
+// sets up a new EventHandler with the default Discord handlers
 func NewEventHandler() *EventHandler {
 	return &EventHandler{
 		NamedHandlers: map[string]func(*Session, gateway.Payload) error{
@@ -93,6 +94,10 @@ var opCodeNames = map[gateway.GatewayOpCode]string{
 	gateway.Reconnect:           "Reconnect",
 }
 
+// this handles events (duh)
+// first we need to check if there is an EventName attached to the payload, so we can map it to the correct handler
+// if there is no EventName then we use the OpCode handlers
+// this function can handle sending events as well, just pass it the payload with the appropriate EventName or OpCode and let it fly
 func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	// check first for the payload event name ("t" field in the raw payload) to see if it was omitted
 	// if it's not there run with the OpCode
