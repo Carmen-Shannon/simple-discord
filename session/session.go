@@ -218,6 +218,8 @@ func (s *Session) handleError() {
 
 // when a session is disconnected but can be resumed for one of many reasons, use this
 func (s *Session) ResumeSession() error {
+	close(s.stopHeartbeat)
+	
 	// open a new connection using the cached url
 	ws, err := s.dialer()
 	if err != nil {
@@ -251,6 +253,8 @@ func (s *Session) ResumeSession() error {
 
 // when a session is disconnected and can not be resumed, use this
 func (s *Session) ReconnectSession() error {
+	close(s.stopHeartbeat)
+
 	ws, err := s.dialer()
 	if err != nil {
 		return err
