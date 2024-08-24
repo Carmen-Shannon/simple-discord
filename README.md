@@ -17,5 +17,4 @@ go get github.com/Carmen-Shannon/simple-discord@latest
 ```
 
 ## Version
-**v0.4.0**
-- Technically the first release, because it's the first time I learned how to properly use tags. This version lays the basic groundwork for the rest of the work to come. The basic read/write logic as well as handling events to/from the Discord API is completed.
+N/A no release yet, v0.1.0 will be the first release

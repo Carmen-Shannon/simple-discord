@@ -1,18 +1,13 @@
 package session
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
-	"os"
-	"os/exec"
-	"strings"
 	"sync"
+	"time"
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
@@ -33,31 +28,20 @@ type Session struct {
 	Intents       []structs.Intent
 	Servers       map[string]structs.Server
 	helloReceived chan struct{}
+	stopHeartbeat chan struct{}
 	readChan      chan []byte
 	writeChan     chan []byte
 	errorChan     chan error
 }
 
-func (s *Session) Exit(closeCode int) error {
-	// Construct the close frame
-	closeFrame := make([]byte, 2)
-	binary.BigEndian.PutUint16(closeFrame[:2], uint16(closeCode))
-
-	// Send the close frame
-	if _, err := s.Conn.Write(closeFrame); err != nil {
-		return fmt.Errorf("error sending close frame: %v", err)
+func (s *Session) Exit() error {
+	if s.stopHeartbeat != nil {
+		close(s.stopHeartbeat)
 	}
-
 	// Close the connection
 	if err := s.Conn.Close(); err != nil {
 		return fmt.Errorf("error closing connection: %v", err)
 	}
-
-	// Close the channels
-	close(s.readChan)
-	close(s.writeChan)
-	close(s.errorChan)
-
 	return nil
 }
 
@@ -69,15 +53,13 @@ func (s *Session) Listen() {
 			continue
 		}
 
-		data, err := gateway.NewReceiveEvent(payload)
+		var err error
+		payload.Data, err = gateway.NewReceiveEvent(payload)
 		if err != nil {
 			s.errorChan <- fmt.Errorf("error parsing event: %v", err)
 			fmt.Println(payload.ToString())
 			continue
 		}
-
-		payload.Data = data
-		fmt.Printf("Received payload type: %T\n", payload.Data)
 
 		// signal when HELLO is received
 		if payload.OpCode == gateway.Hello {
@@ -92,7 +74,17 @@ func (s *Session) Listen() {
 	}
 }
 
+func (s *Session) Write(data []byte) {
+	if len(s.writeChan) < cap(s.writeChan) {
+		s.writeChan <- data
+	} else {
+		s.errorChan <- fmt.Errorf("failed to write data to write channel")
+	}
+}
+
 func (s *Session) handleRead() {
+	defer close(s.readChan)
+
 	var buffers [][]byte
 
 	for {
@@ -103,22 +95,13 @@ func (s *Session) handleRead() {
 				break
 			}
 			s.errorChan <- err
-			continue
+			break
 		}
 
 		buffers = append(buffers, tempBuffer[:n])
 
 		for {
 			combinedBuffer := bytes.Join(buffers, nil)
-
-			// check for a close code and disconnection here
-			if len(combinedBuffer) == 2 {
-				closeCode := binary.BigEndian.Uint16(combinedBuffer)
-				s.errorChan <- fmt.Errorf("connection closed with code: %d", closeCode)
-				s.Exit(1000)
-				return
-			}
-
 			decoder := json.NewDecoder(bytes.NewReader(combinedBuffer))
 			var msg json.RawMessage
 			startOffset := len(combinedBuffer)
@@ -146,55 +129,46 @@ func (s *Session) handleRead() {
 	}
 }
 
-func (s *Session) Write(data []byte) {
-	if len(s.writeChan) < cap(s.writeChan) {
-		s.writeChan <- data
-	} else {
-		s.errorChan <- fmt.Errorf("failed to write data to write channel")
-	}
-}
-
 func (s *Session) handleWrite() {
+	defer close(s.writeChan)
+
+	retryCount := 0
+	maxRetries := 3
+	retryDelay := time.Second * 2
+
 	for data := range s.writeChan {
-		if _, err := s.Conn.Write(data); err != nil {
-			s.errorChan <- err
+		for {
+			if _, err := s.Conn.Write(data); err != nil {
+				if retryCount < maxRetries {
+					retryCount++
+					log.Printf("write error: %v, retrying %d/%d", err, retryCount, maxRetries)
+					time.Sleep(retryDelay)
+					continue
+				} else {
+					s.errorChan <- fmt.Errorf("write error after %d retries: %v", maxRetries, err)
+					if err := s.ReconnectSession(); err != nil {
+						s.errorChan <- fmt.Errorf("error resuming session: %v", err)
+						s.Exit()
+						break
+					}
+					return
+				}
+			}
+			retryCount = 0 // Reset retry count on successful write
+			break
 		}
 	}
 }
 
 func (s *Session) handleError() {
+	defer close(s.errorChan)
+
 	for err := range s.errorChan {
 		log.Printf("error: %v\n", err)
 	}
 }
 
-func (s *Session) RegenerateSession(newSession *Session) error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-
-	s.Conn = newSession.Conn
-	s.HeartbeatACK = newSession.HeartbeatACK
-	s.Sequence = newSession.Sequence
-	s.EventHandler = newSession.EventHandler
-	s.ID = newSession.ID
-	s.ResumeURL = newSession.ResumeURL
-	s.Token = newSession.Token
-	s.Intents = newSession.Intents
-	s.Servers = newSession.Servers
-	s.helloReceived = newSession.helloReceived
-	s.readChan = newSession.readChan
-	s.writeChan = newSession.writeChan
-	s.errorChan = newSession.errorChan
-
-	return nil
-}
-
 func (s *Session) ResumeSession() error {
-	// ensure the connection is really closed
-	if err := s.Exit(1000); err != nil {
-		return err
-	}
-
 	// open a new connection using the cached url
 	ws, err := s.dialer()
 	if err != nil {
@@ -202,16 +176,14 @@ func (s *Session) ResumeSession() error {
 	}
 	s.SetConn(ws)
 
-	// clean out the cached Guilds from the previous session
-	s.SetServers(make(map[string]structs.Server))
-
-	// Exit() already closed the channels, so we are re-opening them here
+	// Reinitialize the channels
 	s.helloReceived = make(chan struct{})
+	s.stopHeartbeat = make(chan struct{})
 	s.readChan = make(chan []byte)
 	s.writeChan = make(chan []byte, 4096)
 	s.errorChan = make(chan error)
 
-	// set up the goroutines to listen, read, write, and handle errors
+	// Start the goroutines to listen, read, write, and handle errors
 	go s.Listen()
 	go s.handleRead()
 	go s.handleWrite()
@@ -228,6 +200,39 @@ func (s *Session) ResumeSession() error {
 	return nil
 }
 
+func (s *Session) ReconnectSession() error {
+	ws, err := s.dialer()
+	if err != nil {
+		return err
+	}
+	s.SetConn(ws)
+
+	// reinitialize the channels
+	s.helloReceived = make(chan struct{})
+	s.stopHeartbeat = make(chan struct{})
+	s.readChan = make(chan []byte)
+	s.writeChan = make(chan []byte, 4096)
+	s.errorChan = make(chan error)
+
+	// Start the goroutines to listen, read, write, and handle errors
+	go s.Listen()
+	go s.handleRead()
+	go s.handleWrite()
+	go s.handleError()
+
+	<-s.helloReceived
+
+	var identifyData gateway.Payload
+	identifyData.OpCode = gateway.Identify
+
+	// let her rip tater chip
+	if err := s.EventHandler.HandleEvent(s, identifyData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	var sess Session
 	sess.SetToken(&token)
@@ -235,6 +240,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.SetIntents(intents)
 	sess.SetServers(make(map[string]structs.Server))
 	sess.helloReceived = make(chan struct{})
+	sess.stopHeartbeat = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
@@ -265,64 +271,6 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	return &sess, nil
 }
 
-func getGatewayUrl(token string) (string, error) {
-	botUrl, err := getBotUrl()
-	if err != nil {
-		return "", err
-	}
-
-	botVersion, err := getBotVersion()
-	if err != nil {
-		return "", err
-	}
-	headers := map[string]string{
-		"Authorization": "Bot " + token,
-		"User-Agent":    fmt.Sprintf("DiscordBot (%s, %s)", botUrl, botVersion),
-	}
-	resp, err := requestutil.HttpRequest("GET", "/gateway", headers, nil)
-	if err != nil {
-		return "", err
-	}
-
-	var gatewayResponse structs.GetGatewayResponse
-	if err := json.Unmarshal(resp, &gatewayResponse); err != nil {
-		return "", err
-	}
-
-	return gatewayResponse.URL, nil
-}
-
-func getBotUrl() (string, error) {
-	file, err := os.Open("go.mod")
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	if scanner.Scan() {
-		line := scanner.Text()
-		if strings.HasPrefix(line, "module ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "module ")), nil
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return "", err
-	}
-
-	return "", fmt.Errorf("module name not found in go.mod")
-}
-
-func getBotVersion() (string, error) {
-	cmd := exec.Command("git", "describe", "--tags", "--abbrev=0")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
-}
-
 func (s *Session) dialer() (*websocket.Conn, error) {
 	var url string
 	if s.GetResumeURL() != nil {
@@ -332,7 +280,7 @@ func (s *Session) dialer() (*websocket.Conn, error) {
 		if s.GetToken() == nil {
 			return nil, fmt.Errorf("token not set for session")
 		}
-		url, err = getGatewayUrl(*s.GetToken())
+		url, err = requestutil.GetGatewayUrl(*s.GetToken())
 		if err != nil {
 			return nil, err
 		}
@@ -342,32 +290,8 @@ func (s *Session) dialer() (*websocket.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return ws, nil
-}
-
-// http request functions
-func (s *Session) GetMessageRequest(channelId, messageId string) (*structs.Message, error) {
-	if s.GetToken() == nil {
-		return nil, errors.New("token not set for session")
-	}
-	path := "/channels/" + channelId + "/messages/" + messageId
-	headers := map[string]string{
-		"Authorization": "Bot " + *s.Token,
-	}
-
-	resp, err := requestutil.HttpRequest("GET", path, headers, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var message structs.Message
-
-	err = json.Unmarshal(resp, &message)
-	if err != nil {
-		return nil, err
-	}
-
-	return &message, nil
 }
 
 // getters and setters because mutex

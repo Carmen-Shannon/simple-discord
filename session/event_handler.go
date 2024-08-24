@@ -10,6 +10,7 @@ import (
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
+	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/util"
@@ -89,6 +90,7 @@ var opCodeNames = map[gateway.GatewayOpCode]string{
 	gateway.RequestGuildMembers: "RequestGuildMembers",
 	gateway.Hello:               "Hello",
 	gateway.HeartbeatACK:        "HeartbeatACK",
+	gateway.Reconnect:           "Reconnect",
 }
 
 func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
@@ -248,20 +250,13 @@ func handlePresenceUpdateEvent(s *Session, p gateway.Payload) error {
 func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
 	if invalidSessionEvent, ok := p.Data.(receiveevents.InvalidSessionEvent); ok {
 		if invalidSessionEvent {
-			if err := s.ResumeSession(); err != nil {
+			if err := s.ReconnectSession(); err != nil {
 				return err
 			}
-			fmt.Println("RESUMED SESSION")
+			fmt.Println("RECONNECTED SESSION")
 		} else {
-			s.Exit(1001)
-			var err error
-			var newSess *Session
-			newSess, err = NewSession(*s.GetToken(), s.GetIntents())
-			if err != nil {
-				return err
-			}
-			s.RegenerateSession(newSess)
-			fmt.Println("REGENERATED SESSION")
+			s.Exit()
+			fmt.Println("SESSION ENDED")
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -284,8 +279,6 @@ func handleReconnectEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleResumedEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING RESUMED EVENT")
-	fmt.Println(p.ToString())
 	return nil
 }
 
@@ -539,7 +532,7 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 		}
 
 		if server.GetMessage(messageUpdateEvent.ChannelID, messageUpdateEvent.Message.ID) == nil {
-			message, err := s.GetMessageRequest(messageUpdateEvent.ChannelID.ToString(), messageUpdateEvent.Message.ID.ToString())
+			message, err := requestutil.GetMessageRequest(messageUpdateEvent.ChannelID.ToString(), messageUpdateEvent.Message.ID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -597,7 +590,7 @@ func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionAddEvent.ChannelID, reactionAddEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(reactionAddEvent.ChannelID.ToString(), reactionAddEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(reactionAddEvent.ChannelID.ToString(), reactionAddEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -649,7 +642,7 @@ func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionRemoveEvent.ChannelID, reactionRemoveEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(reactionRemoveEvent.ChannelID.ToString(), reactionRemoveEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(reactionRemoveEvent.ChannelID.ToString(), reactionRemoveEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -687,7 +680,7 @@ func handleMessageReactionRemoveAllEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionRemoveAllEvent.ChannelID, reactionRemoveAllEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(reactionRemoveAllEvent.ChannelID.ToString(), reactionRemoveAllEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(reactionRemoveAllEvent.ChannelID.ToString(), reactionRemoveAllEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -715,7 +708,7 @@ func handleMessageReactionRemoveEmojiEvent(s *Session, p gateway.Payload) error 
 
 		currentMessage := server.GetMessage(reactionRemoveEmojiEvent.ChannelID, reactionRemoveEmojiEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(reactionRemoveEmojiEvent.ChannelID.ToString(), reactionRemoveEmojiEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(reactionRemoveEmojiEvent.ChannelID.ToString(), reactionRemoveEmojiEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -743,7 +736,7 @@ func handleMessagePollVoteAddEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(messagePollVoteAddEvent.ChannelID, messagePollVoteAddEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(messagePollVoteAddEvent.ChannelID.ToString(), messagePollVoteAddEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(messagePollVoteAddEvent.ChannelID.ToString(), messagePollVoteAddEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -779,7 +772,7 @@ func handleMessagePollVoteRemoveEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(messagePollVoteRemoveEvent.ChannelID, messagePollVoteRemoveEvent.MessageID)
 		if currentMessage == nil {
-			message, err := s.GetMessageRequest(messagePollVoteRemoveEvent.ChannelID.ToString(), messagePollVoteRemoveEvent.MessageID.ToString())
+			message, err := requestutil.GetMessageRequest(messagePollVoteRemoveEvent.ChannelID.ToString(), messagePollVoteRemoveEvent.MessageID.ToString(), *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -974,24 +967,23 @@ func sendHeartbeatEvent(s *Session) error {
 }
 
 func heartbeatLoop(ticker *time.Ticker, s *Session) {
-	if ticker == nil {
-		return
-	} else if s.HeartbeatACK == nil {
-		ticker.Stop()
-		return
-	}
+	defer ticker.Stop()
 
 	firstHeartbeat := true
 
-	for range ticker.C {
-		if firstHeartbeat {
-			jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
-			time.Sleep(jitter)
-			firstHeartbeat = false
-		}
+	for {
+		select {
+		case <-ticker.C:
+			if firstHeartbeat {
+				jitter := time.Duration(rand.Intn(1000)) * time.Millisecond
+				time.Sleep(jitter)
+				firstHeartbeat = false
+			}
 
-		if err := sendHeartbeatEvent(s); err != nil {
-			ticker.Stop()
+			if err := sendHeartbeatEvent(s); err != nil {
+				return
+			}
+		case <-s.stopHeartbeat:
 			return
 		}
 	}

@@ -2,10 +2,15 @@ package requestutil
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+
+	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
 const (
@@ -40,4 +45,53 @@ func HttpRequest(method string, path string, headers map[string]string, body []b
 	}
 
 	return respBody, nil
+}
+
+func GetGatewayUrl(token string) (string, error) {
+	botUrl, err := util.GetBotUrl()
+	if err != nil {
+		return "", err
+	}
+
+	botVersion, err := util.GetBotVersion()
+	if err != nil {
+		return "", err
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+		"User-Agent":    fmt.Sprintf("DiscordBot (%s, %s)", botUrl, botVersion),
+	}
+
+	resp, err := HttpRequest("GET", "/gateway", headers, nil)
+	if err != nil {
+		return "", err
+	}
+
+	var gatewayResponse structs.GetGatewayResponse
+	if err := json.Unmarshal(resp, &gatewayResponse); err != nil {
+		return "", err
+	}
+
+	return gatewayResponse.URL, nil
+}
+
+func GetMessageRequest(channelId, messageId, token string) (*structs.Message, error) {
+	path := "/channels/" + channelId + "/messages/" + messageId
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+	}
+
+	resp, err := HttpRequest("GET", path, headers, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var message structs.Message
+	err = json.Unmarshal(resp, &message)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
 }

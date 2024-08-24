@@ -6,3 +6,5 @@ require (
 	github.com/joho/godotenv v1.5.1
 	golang.org/x/net v0.28.0
 )
+
+require bou.ke/monkey v1.0.2

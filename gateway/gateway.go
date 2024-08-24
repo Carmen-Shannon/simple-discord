@@ -8,6 +8,18 @@ import (
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 )
 
+// manually implement ping/pong frames
+type ControlFrame struct {
+	Fin     bool
+	RSV1    bool
+	RSV2    bool
+	RSV3    bool
+	OpCode  byte
+	Mask    bool
+	MaskKey [4]byte
+	Payload []byte
+}
+
 type GatewayOpCode int
 
 const (
@@ -30,32 +42,6 @@ type Payload struct {
 	Seq       *int          `json:"s,omitempty"`
 	EventName *string       `json:"t,omitempty"`
 }
-
-// wont know if I need this :shrug:
-// func (p *Payload) UnmarshalJSON(data []byte) error {
-// 	type Alias Payload
-// 	var temp Alias
-// 	if err := json.Unmarshal(data, &temp); err != nil {
-// 		return err
-// 	}
-
-// 	*p = Payload(temp)
-
-// 	data, err := NewReceiveEvent(*p)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	return nil
-// }
-
-// func (p *Payload) MarshalJSON() ([]byte, error) {
-// 	if err := NewSendEvent(*p); err != nil {
-// 		return nil, err
-// 	}
-
-// 	type Alias Payload
-// 	return json.Marshal((*Alias)(p))
-// }
 
 func (p *Payload) ToString() string {
 	jsonData, _ := json.Marshal(p)
