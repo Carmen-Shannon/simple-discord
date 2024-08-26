@@ -18,3 +18,31 @@ go get github.com/Carmen-Shannon/simple-discord@latest
 
 ## Version
 N/A no release yet, v0.1.0 will be the first release
+
+## In-Progress
+
+This list will change as I want to add things
+- [x] Struct definitions
+- [ ] Gateway management
+    - [x] Standard gateway management
+    - [ ] Voice gateway management
+- [x] Event handler
+- [ ] Shard management
+- [ ] HTTP requests
+    - [x] Application requests
+    - [ ] Application Role Connection Metadata requests
+    - [ ] Audit Log requests
+    - [ ] Auto Moderation requests
+    - [ ] Channel requests
+    - [ ] Emoji requests
+    - [ ] Guild requests
+    - [ ] Guild Scheduled Event requests
+    - [ ] Guild Template requests
+    - [ ] Invite requests
+    - [x] Message requests
+    - [ ] Poll requests
+    - [ ] Stage Instance requests
+    - [ ] Sticker requests
+    - [ ] User requests
+    - [ ] Voice requests
+    - [ ] Webhook requests
