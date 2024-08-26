@@ -51,3 +51,20 @@ type GetReactionsDto struct {
 	After *structs.Snowflake    `json:"after,omitempty"`
 	Limit *int                  `json:"limit,omitempty"`
 }
+
+type EditMessageDto struct {
+	GetChannelMessageDto
+	Content         *string                                `json:"content,omitempty"`
+	Embeds          *[]structs.Embed                       `json:"embeds,omitempty"`
+	Flags           *structs.Bitfield[structs.MessageFlag] `json:"flags,omitempty"`
+	AllowedMentions *structs.AllowedMentions               `json:"allowed_mentions,omitempty"`
+	Components      *[]structs.MessageComponent            `json:"components,omitempty"`
+	Files           *string                                `json:"files,omitempty"` // TODO: this is for uploading files to messages: https://discord.com/developers/docs/reference#uploading-files DONT USE THIS YET
+	PayloadJson     *string                                `json:"payload_json,omitempty"`
+	Attachments     *[]structs.Attachment                  `json:"attachments,omitempty"`
+}
+
+type BulkDeleteMessagesDto struct {
+	ChannelID structs.Snowflake   `json:"channel_id"`
+	Messages []structs.Snowflake `json:"messages"`
+}

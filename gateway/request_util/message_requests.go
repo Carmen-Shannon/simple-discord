@@ -214,3 +214,63 @@ func DeleteAllChannelMessageReactionsForEmoji(store dto.CreateReactionDto, token
 
 	return nil
 }
+
+func EditChannelMessage(messageDto dto.EditMessageDto, token string) (*structs.Message, error) {
+	path := "/channels/" + messageDto.ChannelID.ToString() + "/messages/" + messageDto.MessageID.ToString()
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+		"Content-Type":  "application/json",
+	}
+
+	body, err := json.Marshal(messageDto)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := HttpRequest("PATCH", path, headers, body)
+	if err != nil {
+		return nil, err
+	}
+
+	var message structs.Message
+	err = json.Unmarshal(resp, &message)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
+}
+
+func DeleteChannelMessage(idStore dto.GetChannelMessageDto, token string) error {
+	path := "/channels/" + idStore.ChannelID.ToString() + "/messages/" + idStore.MessageID.ToString()
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+	}
+
+	_, err := HttpRequest("DELETE", path, headers, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func BulkDeleteChannelMessages(deleteDto dto.BulkDeleteMessagesDto, token string) error {
+	path := "/channels/" + deleteDto.ChannelID.ToString() + "/messages/bulk-delete"
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+		"Content-Type":  "application/json",
+	}
+
+	body, err := json.Marshal(deleteDto)
+	if err != nil {
+		return err
+	}
+
+	_, err = HttpRequest("POST", path, headers, body)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
