@@ -1,6 +1,6 @@
 package structs
 
-type Permission int
+type Permission int64
 
 const (
 	CreateInstantInvite              Permission = 1 << 0

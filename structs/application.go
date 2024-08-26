@@ -58,8 +58,8 @@ const (
 )
 
 type InstallParams struct {
-	Scopes      []string   `json:"scopes"`
-	Permissions Permission `json:"permissions"`
+	Scopes      []OAuth2Scope        `json:"scopes"`
+	Permissions Bitfield[Permission] `json:"permissions"`
 }
 
 type ApplicationCommandPermissionType int

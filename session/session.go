@@ -56,16 +56,40 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 }
 
 type Session struct {
-	Mu            sync.Mutex
-	Conn          *websocket.Conn
-	HeartbeatACK  *int
-	Sequence      *int
-	EventHandler  *EventHandler
-	ID            *string
-	ResumeURL     *string
-	Token         *string
-	Intents       []structs.Intent
-	Servers       map[string]structs.Server
+	// Mutex for thread safety
+	Mu sync.Mutex
+
+	// Websocket connection
+	Conn *websocket.Conn
+
+	// Heartbeat response time
+	HeartbeatACK *int
+
+	// Latest sequence number
+	Sequence *int
+
+	// Custom event handler
+	EventHandler *EventHandler
+
+	// Session ID
+	ID *string
+
+	// Gateway URL to resume with
+	ResumeURL *string
+
+	// Bot token
+	Token *string
+
+	// Intents to subscribe to
+	Intents []structs.Intent
+
+	// Servers the bot is in
+	Servers map[string]structs.Server
+
+	// Bot details
+	BotData *structs.Bot
+
+	// various channels, self explanatory what each one does
 	helloReceived chan struct{}
 	stopHeartbeat chan struct{}
 	readChan      chan []byte
@@ -219,7 +243,7 @@ func (s *Session) handleError() {
 // when a session is disconnected but can be resumed for one of many reasons, use this
 func (s *Session) ResumeSession() error {
 	close(s.stopHeartbeat)
-	
+
 	// open a new connection using the cached url
 	ws, err := s.dialer()
 	if err != nil {
@@ -456,4 +480,18 @@ func (s *Session) AddServer(server structs.Server) {
 	defer s.Mu.Unlock()
 
 	s.Servers[server.ID.ToString()] = server
+}
+
+func (s *Session) GetBotData() *structs.Bot {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.BotData
+}
+
+func (s *Session) SetBotData(bot *structs.Bot) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.BotData = bot
 }

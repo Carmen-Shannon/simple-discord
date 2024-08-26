@@ -75,23 +75,3 @@ func GetGatewayUrl(token string) (string, error) {
 
 	return gatewayResponse.URL, nil
 }
-
-func GetMessageRequest(channelId, messageId, token string) (*structs.Message, error) {
-	path := "/channels/" + channelId + "/messages/" + messageId
-	headers := map[string]string{
-		"Authorization": "Bot " + token,
-	}
-
-	resp, err := HttpRequest("GET", path, headers, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	var message structs.Message
-	err = json.Unmarshal(resp, &message)
-	if err != nil {
-		return nil, err
-	}
-
-	return &message, nil
-}

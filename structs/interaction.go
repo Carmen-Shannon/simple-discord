@@ -45,12 +45,12 @@ const (
 	UserInstallType  IntegrationType = 1
 )
 
-type ContextType int
+type IntegrationContextType int
 
 const (
-	GuildContextType          ContextType = 0
-	BotDMContextType          ContextType = 1
-	PrivateChannelContextType ContextType = 2
+	GuildContextType          IntegrationContextType = 0
+	BotDMContextType          IntegrationContextType = 1
+	PrivateChannelContextType IntegrationContextType = 2
 )
 
 type InteractionResponseData struct {
@@ -81,7 +81,7 @@ type Interaction struct {
 	GuildLocale                  *string                    `json:"guild_locale,omitempty"`
 	Entitlements                 []Entitlement              `json:"entitlements"`
 	AuthorizingIntegrationOwners map[IntegrationType]string `json:"authorizing_integration_owners"`
-	Context                      *ContextType               `json:"context,omitempty"`
+	Context                      *IntegrationContextType    `json:"context,omitempty"`
 }
 
 type InteractionResponse struct {

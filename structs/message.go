@@ -58,9 +58,16 @@ type AllowedMentions struct {
 }
 
 type ReactionCountDetails struct {
-	Burst  int `json:"burst"`
-	Normal int `json:"normal"`
+	Burst  ReactionType `json:"burst"`
+	Normal ReactionType `json:"normal"`
 }
+
+type ReactionType int
+
+const (
+	NormalReactionType ReactionType = 0
+	BurstReactionType  ReactionType = 1
+)
 
 type Reaction struct {
 	Count        int                  `json:"count"`

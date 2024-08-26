@@ -13,6 +13,7 @@ import (
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/dto"
 	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
@@ -537,7 +538,10 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 		}
 
 		if server.GetMessage(messageUpdateEvent.ChannelID, messageUpdateEvent.Message.ID) == nil {
-			message, err := requestutil.GetMessageRequest(messageUpdateEvent.ChannelID.ToString(), messageUpdateEvent.Message.ID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = messageUpdateEvent.ChannelID
+			query.MessageID = messageUpdateEvent.Message.ID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -595,7 +599,10 @@ func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionAddEvent.ChannelID, reactionAddEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(reactionAddEvent.ChannelID.ToString(), reactionAddEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = reactionAddEvent.ChannelID
+			query.MessageID = reactionAddEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -647,7 +654,10 @@ func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionRemoveEvent.ChannelID, reactionRemoveEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(reactionRemoveEvent.ChannelID.ToString(), reactionRemoveEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = reactionRemoveEvent.ChannelID
+			query.MessageID = reactionRemoveEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -685,7 +695,10 @@ func handleMessageReactionRemoveAllEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(reactionRemoveAllEvent.ChannelID, reactionRemoveAllEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(reactionRemoveAllEvent.ChannelID.ToString(), reactionRemoveAllEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = reactionRemoveAllEvent.ChannelID
+			query.MessageID = reactionRemoveAllEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -713,7 +726,10 @@ func handleMessageReactionRemoveEmojiEvent(s *Session, p gateway.Payload) error 
 
 		currentMessage := server.GetMessage(reactionRemoveEmojiEvent.ChannelID, reactionRemoveEmojiEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(reactionRemoveEmojiEvent.ChannelID.ToString(), reactionRemoveEmojiEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = reactionRemoveEmojiEvent.ChannelID
+			query.MessageID = reactionRemoveEmojiEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -741,7 +757,10 @@ func handleMessagePollVoteAddEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(messagePollVoteAddEvent.ChannelID, messagePollVoteAddEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(messagePollVoteAddEvent.ChannelID.ToString(), messagePollVoteAddEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = messagePollVoteAddEvent.ChannelID
+			query.MessageID = messagePollVoteAddEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -777,7 +796,10 @@ func handleMessagePollVoteRemoveEvent(s *Session, p gateway.Payload) error {
 
 		currentMessage := server.GetMessage(messagePollVoteRemoveEvent.ChannelID, messagePollVoteRemoveEvent.MessageID)
 		if currentMessage == nil {
-			message, err := requestutil.GetMessageRequest(messagePollVoteRemoveEvent.ChannelID.ToString(), messagePollVoteRemoveEvent.MessageID.ToString(), *s.GetToken())
+			var query dto.GetChannelMessageDto
+			query.ChannelID = messagePollVoteRemoveEvent.ChannelID
+			query.MessageID = messagePollVoteRemoveEvent.MessageID
+			message, err := requestutil.GetChannelMessage(query, *s.GetToken())
 			if err != nil {
 				return err
 			} else if message == nil {
@@ -920,6 +942,10 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
+		// TODO: handle the rest of the ready event
+		// cache the User and Application information from the ready event in the Session or Server DONE
+		// implement sharding at some point
+		s.SetBotData(structs.NewBot(readyEvent.User, readyEvent.Application))
 		fmt.Printf("successfully connected to gateway\n---------- %s ----------\n", readyEvent.User.Username)
 	} else {
 		return errors.New("unexpected payload data type")
