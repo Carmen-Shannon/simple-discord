@@ -46,3 +46,8 @@ This list will change as I want to add things
     - [ ] User requests
     - [ ] Voice requests
     - [ ] Webhook requests
+- [ ] Tests
+    - [ ] Integration tests
+        - [ ] Gateway integration tests
+        - [ ] HTTP integration tests
+    - [ ] Unit tests
