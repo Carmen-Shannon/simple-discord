@@ -1,5 +1,16 @@
 package structs
 
+type AuditLog struct {
+	ApplicationCommands []ApplicationCommand `json:"application_commands"`
+	AuditLogEntries []AuditLogEntry `json:"audit_log_entries"`
+	AutoModerationRules []AutoModerationRule `json:"auto_moderation_rules"`
+	GuildScheduledEvents []GuildScheduledEvent `json:"guild_scheduled_events"`
+	Integrations []GuildIntegration `json:"integrations"`
+	Threads []Channel `json:"threads"`
+	Users []User `json:"users"`
+	Webhooks []Webhook `json:"webhooks"`
+}
+
 type AuditLogEntry struct {
 	TargetID   string                 `json:"target_id"`
 	Changes    []AuditLogChange       `json:"changes"`

@@ -31,8 +31,8 @@ This list will change as I want to add things
 - [ ] HTTP requests
     - [x] Application requests
     - [ ] Application Role Connection Metadata requests
-    - [ ] Audit Log requests
-    - [ ] Auto Moderation requests
+    - [x] Audit Log requests
+    - [x] Auto Moderation requests
     - [ ] Channel requests
     - [ ] Emoji requests
     - [ ] Guild requests
