@@ -148,6 +148,14 @@ func (s *Session) Write(data []byte) {
 	}
 }
 
+func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway.Payload) error) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	for name, command := range commands {
+		s.EventHandler.AddCustomHandler(name, command)
+	}
+}
+
 // reads frames from the gateway in increments of 1024 bytes
 // dynamically resizes the buffer array to fit the full message and writes the message to the readChan
 func (s *Session) handleRead() {

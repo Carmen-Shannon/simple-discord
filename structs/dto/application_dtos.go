@@ -14,3 +14,7 @@ type EditCurrentApplicationDto struct {
 	InteractionsEndpointURL        *string                                                                          `json:"interaction_endpoints_url,omitempty"`
 	Tags                           *[]string                                                                        `json:"tags,omitempty"`
 }
+
+type GetApplicationRoleConnectionMetadataRecordsDto struct {
+	ApplicationID structs.Snowflake `json:"application_id"`
+}

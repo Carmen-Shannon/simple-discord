@@ -24,9 +24,10 @@ type ApplicationCommand struct {
 type ApplicationCommandType int
 
 const (
-	ChatInputCommand ApplicationCommandType = 1
-	UserCommand      ApplicationCommandType = 2
-	MessageCommand   ApplicationCommandType = 3
+	ChatInputCommand         ApplicationCommandType = 1
+	UserCommand              ApplicationCommandType = 2
+	MessageCommand           ApplicationCommandType = 3
+	PrimaryEntryPointCommand ApplicationCommandType = 4
 )
 
 type ApplicationCommandOption struct {
@@ -68,6 +69,13 @@ type ApplicationCommandOptionChoice struct {
 	Value             interface{}       `json:"value"` // can be a string, int or float64
 }
 
+type EntryPointCommandHandlerType int
+
+const (
+	AppHandlerType            EntryPointCommandHandlerType = 1
+	DiscordLaunchActivityType EntryPointCommandHandlerType = 2
+)
+
 func (a *ApplicationCommandOptionChoice) UnmarshalJSON(data []byte) error {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -95,7 +103,7 @@ func (a *ApplicationCommandOptionChoice) UnmarshalJSON(data []byte) error {
 
 func (a *ApplicationCommandOptionChoice) MarshalJSON() ([]byte, error) {
 	raw := map[string]interface{}{
-		"name": a.Name,
+		"name":  a.Name,
 		"value": a.Value,
 	}
 

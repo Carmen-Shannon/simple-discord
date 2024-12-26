@@ -20,54 +20,12 @@ import (
 type EventHandler struct {
 	NamedHandlers  map[string]func(*Session, gateway.Payload) error
 	OpCodeHandlers map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error
+	CustomHandlers map[string]func(*Session, gateway.Payload) error
 }
 
 // sets up a new EventHandler with the default Discord handlers
 func NewEventHandler() *EventHandler {
-	return &EventHandler{
-		NamedHandlers: map[string]func(*Session, gateway.Payload) error{
-			"HELLO":                         handleHelloEvent,
-			"READY":                         handleReadyEvent,
-			"RESUMED":                       handleResumedEvent,
-			"RECONNECT":                     handleReconnectEvent,
-			"INVALID_SESSION":               handleInvalidSessionEvent,
-			"CHANNEL_CREATE":                handleChannelCreateEvent,
-			"CHANNEL_UPDATE":                handleChannelUpdateEvent,
-			"CHANNEL_DELETE":                handleChannelDeleteEvent,
-			"GUILD_CREATE":                  handleGuildCreateEvent,
-			"GUILD_UPDATE":                  handleGuildUpdateEvent,
-			"GUILD_DELETE":                  handleGuildDeleteEvent,
-			"GUILD_BAN_ADD":                 handleGuildBanAddEvent,
-			"GUILD_BAN_REMOVE":              handleGuildBanRemoveEvent,
-			"GUILD_EMOJIS_UPDATE":           handleGuildEmojisUpdateEvent,
-			"GUILD_INTEGRATIONS_UPDATE":     handleGuildIntegrationsUpdateEvent,
-			"GUILD_AUDIT_LOG_ENTRY_CREATE":  handleGuildAuditLogEntryCreateEvent,
-			"GUILD_MEMBER_ADD":              handleGuildMemberAddEvent,
-			"GUILD_MEMBER_REMOVE":           handleGuildMemberRemoveEvent,
-			"GUILD_MEMBER_UPDATE":           handleGuildMemberUpdateEvent,
-			"GUILD_MEMBERS_CHUNK":           handleGuildMembersChunkEvent,
-			"GUILD_ROLE_CREATE":             handleGuildRoleCreateEvent,
-			"GUILD_ROLE_UPDATE":             handleGuildRoleUpdateEvent,
-			"GUILD_ROLE_DELETE":             handleGuildRoleDeleteEvent,
-			"MESSAGE_CREATE":                handleMessageCreateEvent,
-			"MESSAGE_UPDATE":                handleMessageUpdateEvent,
-			"MESSAGE_DELETE":                handleMessageDeleteEvent,
-			"MESSAGE_BULK_DELETE":           handleMessageBulkDeleteEvent,
-			"MESSAGE_REACTION_ADD":          handleMessageReactionAddEvent,
-			"MESSAGE_REACTION_REMOVE":       handleMessageReactionRemoveEvent,
-			"MESSAGE_REACTION_REMOVE_ALL":   handleMessageReactionRemoveAllEvent,
-			"MESSAGE_REACTION_REMOVE_EMOJI": handleMessageReactionRemoveEmojiEvent,
-			"MESSAGE_POLL_VOTE_ADD":         handleMessagePollVoteAddEvent,
-			"MESSAGE_POLL_VOTE_REMOVE":      handleMessagePollVoteRemoveEvent,
-			"TYPING_START":                  handleTypingStartEvent,
-			"USER_UPDATE":                   handleUserUpdateEvent,
-			"VOICE_CHANNEL_EFFECT_SEND":     handleVoiceChannelEffectSendEvent,
-			"VOICE_STATE_UPDATE":            handleVoiceStateUpdateEvent,
-			"VOICE_SERVER_UPDATE":           handleVoiceServerUpdateEvent,
-			"VOICE_CHANNEL_STATUS_UPDATE":   handleVoiceChannelStatusUpdateEvent,
-			"WEBHOOKS_UPDATE":               handleWebhooksUpdateEvent,
-			"PRESENCE_UPDATE":               handlePresenceUpdateEvent,
-		},
+	e := &EventHandler{
 		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
 			gateway.Heartbeat:           handleHeartbeatEvent,
 			gateway.Identify:            handleSendIdentifyEvent,
@@ -79,7 +37,54 @@ func NewEventHandler() *EventHandler {
 			gateway.Hello:               handleHelloEvent,
 			gateway.HeartbeatACK:        handleHeartbeatACKEvent,
 		},
+		CustomHandlers: map[string]func(*Session, gateway.Payload) error{},
 	}
+
+	e.NamedHandlers = map[string]func(*Session, gateway.Payload) error{
+		"HELLO":                         handleHelloEvent,
+		"READY":                         handleReadyEvent,
+		"RESUMED":                       handleResumedEvent,
+		"RECONNECT":                     handleReconnectEvent,
+		"INVALID_SESSION":               handleInvalidSessionEvent,
+		"CHANNEL_CREATE":                handleChannelCreateEvent,
+		"CHANNEL_UPDATE":                handleChannelUpdateEvent,
+		"CHANNEL_DELETE":                handleChannelDeleteEvent,
+		"GUILD_CREATE":                  handleGuildCreateEvent,
+		"GUILD_UPDATE":                  handleGuildUpdateEvent,
+		"GUILD_DELETE":                  handleGuildDeleteEvent,
+		"GUILD_BAN_ADD":                 handleGuildBanAddEvent,
+		"GUILD_BAN_REMOVE":              handleGuildBanRemoveEvent,
+		"GUILD_EMOJIS_UPDATE":           handleGuildEmojisUpdateEvent,
+		"GUILD_INTEGRATIONS_UPDATE":     handleGuildIntegrationsUpdateEvent,
+		"GUILD_AUDIT_LOG_ENTRY_CREATE":  handleGuildAuditLogEntryCreateEvent,
+		"GUILD_MEMBER_ADD":              handleGuildMemberAddEvent,
+		"GUILD_MEMBER_REMOVE":           handleGuildMemberRemoveEvent,
+		"GUILD_MEMBER_UPDATE":           handleGuildMemberUpdateEvent,
+		"GUILD_MEMBERS_CHUNK":           handleGuildMembersChunkEvent,
+		"GUILD_ROLE_CREATE":             handleGuildRoleCreateEvent,
+		"GUILD_ROLE_UPDATE":             handleGuildRoleUpdateEvent,
+		"GUILD_ROLE_DELETE":             handleGuildRoleDeleteEvent,
+		"MESSAGE_CREATE":                handleMessageCreateEvent,
+		"MESSAGE_UPDATE":                handleMessageUpdateEvent,
+		"MESSAGE_DELETE":                handleMessageDeleteEvent,
+		"MESSAGE_BULK_DELETE":           handleMessageBulkDeleteEvent,
+		"MESSAGE_REACTION_ADD":          handleMessageReactionAddEvent,
+		"MESSAGE_REACTION_REMOVE":       handleMessageReactionRemoveEvent,
+		"MESSAGE_REACTION_REMOVE_ALL":   handleMessageReactionRemoveAllEvent,
+		"MESSAGE_REACTION_REMOVE_EMOJI": handleMessageReactionRemoveEmojiEvent,
+		"MESSAGE_POLL_VOTE_ADD":         handleMessagePollVoteAddEvent,
+		"MESSAGE_POLL_VOTE_REMOVE":      handleMessagePollVoteRemoveEvent,
+		"TYPING_START":                  handleTypingStartEvent,
+		"USER_UPDATE":                   handleUserUpdateEvent,
+		"VOICE_CHANNEL_EFFECT_SEND":     handleVoiceChannelEffectSendEvent,
+		"VOICE_STATE_UPDATE":            handleVoiceStateUpdateEvent,
+		"VOICE_SERVER_UPDATE":           handleVoiceServerUpdateEvent,
+		"VOICE_CHANNEL_STATUS_UPDATE":   handleVoiceChannelStatusUpdateEvent,
+		"WEBHOOKS_UPDATE":               handleWebhooksUpdateEvent,
+		"PRESENCE_UPDATE":               handlePresenceUpdateEvent,
+		"INTERACTION_CREATE":            e.handleInteractionCreateEvent,
+	}
+	return e
 }
 
 // this is really just for helping me log more better, will remove
@@ -95,7 +100,7 @@ var opCodeNames = map[gateway.GatewayOpCode]string{
 	gateway.Reconnect:           "Reconnect",
 }
 
-// this handles events (duh)
+// HandleEvent handles events (duh)
 // first we need to check if there is an EventName attached to the payload, so we can map it to the correct handler
 // if there is no EventName then we use the OpCode handlers
 // this function can handle sending events as well, just pass it the payload with the appropriate EventName or OpCode and let it fly
@@ -125,6 +130,21 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 		return handler(s, payload)
 	}
 	return errors.New("no handler for event name")
+}
+
+func (e *EventHandler) AddCustomHandler(name string, handler func(*Session, gateway.Payload) error) {
+	e.CustomHandlers[name] = handler
+}
+
+func (e *EventHandler) handleInteractionCreateEvent(s *Session, p gateway.Payload) error {
+	if interactionCreateEvent, ok := p.Data.(receiveevents.InteractionCreateEvent); ok {
+		name := interactionCreateEvent.Data.Name
+		if handler, ok := e.CustomHandlers[name]; ok && handler != nil {
+			return handler(s, p)
+		}
+		return errors.New("no handler for interaction")
+	}
+	return errors.New("unexpected payload data type")
 }
 
 func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
@@ -1027,9 +1047,5 @@ func startHeartbeatTimer(s *Session) error {
 
 	ticker := time.NewTicker(time.Duration(*s.HeartbeatACK) * time.Millisecond)
 	go heartbeatLoop(ticker, s)
-	return nil
-}
-
-func (e *EventHandler) AddEvent() error {
 	return nil
 }

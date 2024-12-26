@@ -43,12 +43,16 @@ func BuildQueryString(obj interface{}) string {
 				query += "&"
 			}
 
-			// since snowflake is special, need to take care of snowflake
-			// TODO: add other custom types here when needed
+			// we can use custom structs for their ToString methods if we implement them
 			var val string
-			if snowflake, ok := field.Interface().(structs.Snowflake); ok {
-				val = snowflake.ToString()
-			} else {
+			switch field.Interface().(type) {
+			case structs.Snowflake:
+				snowflakeVal := field.Interface().(structs.Snowflake)
+				val = snowflakeVal.ToString()
+			case structs.Bitfield[any]:
+				bitfieldVal := field.Interface().(structs.Bitfield[any])
+				val = bitfieldVal.ToString()
+			default:
 				val = reflect.Indirect(field).String()
 			}
 

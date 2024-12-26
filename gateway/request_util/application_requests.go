@@ -52,3 +52,28 @@ func EditCurrentApplication(updates dto.EditCurrentApplicationDto, token string)
 
 	return &application, nil
 }
+
+func GetApplicationRoleConnectionMetadataRecords(getDto dto.GetApplicationRoleConnectionMetadataRecordsDto, token string) ([]structs.ApplicationRoleConnectionMetadata, error) {
+	path := "/applications/" + getDto.ApplicationID.ToString() + "/role-connections/metadata"
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+	}
+
+	resp, err := HttpRequest("GET", path, headers, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var records []structs.ApplicationRoleConnectionMetadata
+	err = json.Unmarshal(resp, &records)
+	if err != nil {
+		return nil, err
+	}
+
+	return records, nil
+}
+
+// THIS IS NOT IMPLEMENTED YET, NO DETAILS IN DOCUMENTATION FOR HOW TO SEND THE PUT REQUEST
+func UpdateApplicationRoleConnectionMetadataRecords(token string) ([]structs.ApplicationRoleConnectionMetadata, error) {
+	return nil, nil
+}

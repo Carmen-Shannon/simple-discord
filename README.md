@@ -30,7 +30,7 @@ This list will change as I want to add things
 - [ ] Shard management
 - [ ] HTTP requests
     - [x] Application requests
-    - [ ] Application Role Connection Metadata requests
+    - [x] Application Role Connection Metadata requests
     - [x] Audit Log requests
     - [x] Auto Moderation requests
     - [ ] Channel requests
@@ -46,6 +46,9 @@ This list will change as I want to add things
     - [ ] User requests
     - [ ] Voice requests
     - [ ] Webhook requests
+- [X] Registering Custom Commands
+    - [x] Registering Global Commands
+    - [x] Registering Guild Commands
 - [ ] Tests
     - [ ] Integration tests
         - [ ] Gateway integration tests

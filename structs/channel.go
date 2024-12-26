@@ -83,7 +83,7 @@ type Channel struct {
 	DefaultSortOrder       *SortOrderType         `json:"default_sort_order,omitempty"`
 	DefaultForumLayout     *ForumLayoutType       `json:"default_forum_layout,omitempty"`
 	Messages               []Message              `json:"-"`
-	Typing                 *TypingChannel          `json:"-"`
+	Typing                 *TypingChannel         `json:"-"`
 }
 
 func (c *Channel) GetMessage(messageId Snowflake) *Message {
@@ -96,7 +96,7 @@ func (c *Channel) GetMessage(messageId Snowflake) *Message {
 }
 
 type TypingChannel struct {
-	Users  map[string]*Snowflake       `json:"-"`
+	Users  map[string]*Snowflake  `json:"-"`
 	mu     sync.RWMutex           `json:"-"`
 	timers map[string]*time.Timer `json:"-"`
 }
@@ -181,3 +181,10 @@ type DefaultReaction struct {
 	EmojiID   *Snowflake `json:"emoji_id,omitempty"`
 	EmojiName *string    `json:"emoji_name,omitempty"`
 }
+
+type VideoQualityMode int
+
+const (
+	AutoVideoQualityMode VideoQualityMode = 1
+	FullVideoQualityMode VideoQualityMode = 2
+)

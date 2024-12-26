@@ -63,6 +63,14 @@ func (b *Bitfield[T]) RemoveFlag(flag T) {
 	}
 }
 
+func (b *Bitfield[T]) ToString() string {
+	var result string
+    for _, f := range *b {
+        result += fmt.Sprintf("%d", any(f).(int64))
+    }
+    return result
+}
+
 // convert converts an int64 to type T
 func convert[T any](value int64) (T, error) {
 	var t T
@@ -85,6 +93,8 @@ func convert[T any](value int64) (T, error) {
 		return any(RoleFlag(value)).(T), nil
 	case UserFlag:
 		return any(UserFlag(value)).(T), nil
+	case Permission:
+		return any(Permission(value)).(T), nil
 	default:
 		return t, fmt.Errorf("unsupported type conversion from int64 to %T", t)
 	}

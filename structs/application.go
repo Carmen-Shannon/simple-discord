@@ -75,3 +75,25 @@ type ApplicationCommandPermissions struct {
 	Type       ApplicationCommandPermissionType `json:"type"`
 	Permission bool                             `json:"permission"`
 }
+
+type ApplicationRoleConnectionMetadata struct {
+	Type                     ApplicationRoleConnectionMetadataType `json:"type"`
+	Key                      string                                `json:"key"`
+	Name                     string                                `json:"name"`
+	NameLocalizations        *map[string]string                    `json:"name_localizations,omitempty"`
+	Description              string                                `json:"description"`
+	DescriptionLocalizations *map[string]string                    `json:"description_localizations,omitempty"`
+}
+
+type ApplicationRoleConnectionMetadataType int
+
+const (
+	IntegerLessThanOrEqual     ApplicationRoleConnectionMetadataType = 1
+	IntegerGreaterThanOrEqual  ApplicationRoleConnectionMetadataType = 2
+	IntegerEqual               ApplicationRoleConnectionMetadataType = 3
+	IntegerNotEqual            ApplicationRoleConnectionMetadataType = 4
+	DatetimeLessThanOrEqual    ApplicationRoleConnectionMetadataType = 5
+	DatetimeGreaterThanOrEqual ApplicationRoleConnectionMetadataType = 6
+	BooleanEqual               ApplicationRoleConnectionMetadataType = 7
+	BooleanNotEqual            ApplicationRoleConnectionMetadataType = 8
+)

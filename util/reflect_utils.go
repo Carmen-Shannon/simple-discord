@@ -33,3 +33,8 @@ func UpdateFields(dst, src interface{}) error {
 	}
 	return nil
 }
+
+// ToPtr is a utility function to get a pointer to a value.
+func ToPtr[T any](v T) *T {
+	return &v
+}
