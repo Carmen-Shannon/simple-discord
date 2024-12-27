@@ -2,3 +2,4 @@
 main.go
 *.exe
 launch.json
+register_commands/
