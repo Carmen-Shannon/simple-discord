@@ -8,8 +8,8 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
-func GetGlobalApplicationCommands(dto dto.GetGlobalApplicationCommandsDto, applicationID, token string) ([]structs.ApplicationCommand, error) {
-	path := "/applications/" + applicationID + "/commands"
+func GetGlobalApplicationCommands(dto dto.GetGlobalApplicationCommandsDto, token string) ([]structs.ApplicationCommand, error) {
+	path := "/applications/" + dto.ApplicationID + "/commands"
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 	}
@@ -29,8 +29,8 @@ func GetGlobalApplicationCommands(dto dto.GetGlobalApplicationCommandsDto, appli
 	return commands, nil
 }
 
-func GetGlobalApplicationCommand(applicationID, commandID, token string) (*structs.ApplicationCommand, error) {
-	path := "/applications/" + applicationID + "/commands/" + commandID
+func GetGlobalApplicationCommand(dto dto.GetGlobalApplicationCommandDto, token string) (*structs.ApplicationCommand, error) {
+	path := "/applications/" + dto.ApplicationID + "/commands/" + dto.CommandID
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 	}
@@ -49,8 +49,8 @@ func GetGlobalApplicationCommand(applicationID, commandID, token string) (*struc
 	return &command, nil
 }
 
-func BulkOverwriteGlobalApplicationCommands(dto dto.BulkOverwriteGlobalApplicationCommandsDto, applicationID, token string) ([]structs.ApplicationCommand, error) {
-	path := "/applications/" + applicationID + "/commands"
+func BulkOverwriteGlobalApplicationCommands(dto dto.BulkOverwriteGlobalApplicationCommandsDto, token string) ([]structs.ApplicationCommand, error) {
+	path := "/applications/" + dto.ApplicationID + "/commands"
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 		"Content-Type":  "application/json",
