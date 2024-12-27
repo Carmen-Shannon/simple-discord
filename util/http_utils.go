@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"reflect"
+	"strconv"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
 )
@@ -52,6 +53,9 @@ func BuildQueryString(obj interface{}) string {
 			case structs.Bitfield[any]:
 				bitfieldVal := field.Interface().(structs.Bitfield[any])
 				val = bitfieldVal.ToString()
+			case *bool:
+				boolVal := field.Interface().(*bool)
+				val = strconv.FormatBool(*boolVal)
 			default:
 				val = reflect.Indirect(field).String()
 			}

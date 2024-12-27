@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/util"
@@ -19,9 +18,7 @@ const (
 func HttpRequest(method string, path string, headers map[string]string, body []byte) ([]byte, error) {
 	client := &http.Client{}
 
-	normalPath, _ := url.JoinPath(HttpURL, path)
-	fmt.Println(normalPath)
-	req, err := http.NewRequest(method, normalPath, bytes.NewBuffer(body))
+	req, err := http.NewRequest(method, HttpURL+path, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, err
 	}

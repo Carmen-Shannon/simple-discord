@@ -11,6 +11,8 @@ import (
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
+	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+	"github.com/Carmen-Shannon/simple-discord/util"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"golang.org/x/net/websocket"
@@ -148,6 +150,26 @@ func (s *Session) Write(data []byte) {
 	}
 }
 
+func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+	interactionID := interaction.ID.ToString()
+	interactionToken := interaction.Token
+	token := *s.GetToken()
+	reqDto := dto.CreateInteractionResponseDto{
+		WithResponse: util.ToPtr(true),
+	}
+	response := interactionOptions.InteractionResponse()
+	_, err := requestutil.CreateInteractionResponse(interactionID, interactionToken, token, reqDto, *response)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// RegisterCommands adds custom commands to the EventHandler
+//
+// The command key must match the name of the command that was registered using the Discord API
+// You must ACK the command within 3 seconds or Discord will assume the command failed, to properly ACK a command you must
+// call the session.Reply method
 func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway.Payload) error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()

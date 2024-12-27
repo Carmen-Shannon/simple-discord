@@ -38,6 +38,7 @@ This list will change as I want to add things
     - [ ] Guild requests
     - [ ] Guild Scheduled Event requests
     - [ ] Guild Template requests
+    - [x] Interaction Requests
     - [ ] Invite requests
     - [x] Message requests
     - [ ] Poll requests

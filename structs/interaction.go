@@ -1,5 +1,7 @@
 package structs
 
+import "errors"
+
 type ResolvedData struct {
 	Users       *map[Snowflake]User        `json:"users,omitempty"`
 	Members     *map[Snowflake]GuildMember `json:"members,omitempty"`
@@ -36,6 +38,7 @@ const (
 	ApplicationCommandAutocompleteResultInteraction InteractionResponseType = 8
 	ModalInteraction                                InteractionResponseType = 9
 	PremiumRequiredInteraction                      InteractionResponseType = 10
+	LaunchActivityInteraction                       InteractionResponseType = 12
 )
 
 type IntegrationType int
@@ -54,12 +57,14 @@ const (
 )
 
 type InteractionResponseData struct {
-	TTS             *bool                 `json:"tts,omitempty"`
-	Content         *string               `json:"content,omitempty"`
-	Embeds          []Embed               `json:"embeds"`
-	AllowedMentions AllowedMentions       `json:"allowed_mentions"`
-	Flags           Bitfield[MessageFlag] `json:"flags"`
-	Components      MessageComponent      `json:"components"`
+	TTS             bool                  `json:"tts"`
+	Content         string                `json:"content,omitempty"`
+	Embeds          []Embed               `json:"embeds.omitempty"`
+	AllowedMentions *AllowedMentions      `json:"allowed_mentions,omitempty"`
+	Flags           Bitfield[MessageFlag] `json:"flags,omitempty"`
+	Components      []MessageComponent    `json:"components,omitempty"`
+	Attachments     []Attachment          `json:"attachments,omitempty"`
+	Poll            *Poll                 `json:"poll,omitempty"`
 }
 
 type Interaction struct {
@@ -85,6 +90,102 @@ type Interaction struct {
 }
 
 type InteractionResponse struct {
-	Type InteractionResponseType `json:"type"`
-	Data InteractionResponseData `json:"data"`
+	Type InteractionResponseType  `json:"type"`
+	Data *InteractionResponseData `json:"data,omitempty"`
+}
+
+type InteractionCallbackResponse struct {
+	Interaction InteractionCallbackObject    `json:"interaction"`
+	Resource    *InteractionCallbackResource `json:"resource,omitempty"`
+}
+
+type InteractionCallbackObject struct {
+	ID                       Snowflake       `json:"id"`
+	Type                     InteractionType `json:"type"`
+	ActivityInstanceID       *string         `json:"activity_instance_id,omitempty"`
+	ResponseMessageID        *Snowflake      `json:"response_message_id,omitempty"`
+	ResponseMessageLoading   *bool           `json:"response_message_loading,omitempty"`
+	ResponseMessageEphemeral *bool           `json:"response_message_ephemeral,omitempty"`
+}
+
+type InteractionCallbackResource struct {
+	Type             InteractionResponseType      `json:"type"`
+	ActivityInstance *InteractionActivityInstance `json:"activity_instance,omitempty"`
+	Message          *Message                     `json:"message,omitempty"`
+}
+
+type InteractionActivityInstance struct {
+	ID string `json:"id"`
+}
+
+type InteractionResponseOptions interface {
+	InteractionResponse() *InteractionResponse
+	SetResponseType(InteractionResponseType)
+	SetTTS(bool)
+	SetContent(string)
+	SetEmbeds([]Embed) error
+	SetAllowedMentions(*AllowedMentions)
+	SetFlags(Bitfield[MessageFlag]) error
+	SetComponents([]MessageComponent)
+	SetAttachments([]Attachment)
+	SetPoll(*Poll)
+}
+
+var _ InteractionResponseOptions = (*InteractionResponse)(nil)
+
+func (i *InteractionResponse) InteractionResponse() *InteractionResponse {
+	return i
+}
+
+func (i *InteractionResponse) SetResponseType(responseType InteractionResponseType) {
+	i.Type = responseType
+}
+
+func (i *InteractionResponse) SetTTS(tts bool) {
+	i.Data.TTS = tts
+}
+
+func (i *InteractionResponse) SetContent(content string) {
+	i.Data.Content = content
+}
+
+func (i *InteractionResponse) SetEmbeds(embeds []Embed) error {
+	if len(embeds) > 10 {
+		return errors.New("embeds cannot exceed 10")
+	}
+	i.Data.Embeds = embeds
+	return nil
+}
+
+func (i *InteractionResponse) SetAllowedMentions(allowedMentions *AllowedMentions) {
+	i.Data.AllowedMentions = allowedMentions
+}
+
+func (i *InteractionResponse) SetFlags(flags Bitfield[MessageFlag]) error {
+	for _, flag := range flags {
+		if flag != EphemeralMessageFlag && flag != SurpressEmbedsMessageFlag && flag != SurpressNotificationsMessageFlag {
+			return errors.New("can only accept SUPRESS_EMBEDS, EPHEMERAL, and SUPRESS_NOTIFICATIONS flags")
+		}
+	}
+	i.Data.Flags = flags
+	return nil
+}
+
+func (i *InteractionResponse) SetComponents(components []MessageComponent) {
+	i.Data.Components = components
+}
+
+func (i *InteractionResponse) SetAttachments(attachments []Attachment) {
+	i.Data.Attachments = attachments
+}
+
+func (i *InteractionResponse) SetPoll(poll *Poll) {
+	i.Data.Poll = poll
+}
+
+func NewInteractionResponseOptions() InteractionResponseOptions {
+	return &InteractionResponse{
+		Type: PongInteraction,
+		Data: &InteractionResponseData{},
+	}
 }

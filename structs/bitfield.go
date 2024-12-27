@@ -30,7 +30,11 @@ func (b *Bitfield[T]) MarshalJSON() ([]byte, error) {
 func (b *Bitfield[T]) GetFlags() int64 {
 	var flag int64
 	for _, i := range *b {
-		flag |= any(i).(int64)
+		v, err := toInt64(i)
+		if err != nil {
+			return 0
+		}
+		flag |= v
 	}
 	return flag
 }
@@ -65,10 +69,10 @@ func (b *Bitfield[T]) RemoveFlag(flag T) {
 
 func (b *Bitfield[T]) ToString() string {
 	var result string
-    for _, f := range *b {
-        result += fmt.Sprintf("%d", any(f).(int64))
-    }
-    return result
+	for _, f := range *b {
+		result += fmt.Sprintf("%d", any(f).(int64))
+	}
+	return result
 }
 
 // convert converts an int64 to type T
@@ -97,5 +101,32 @@ func convert[T any](value int64) (T, error) {
 		return any(Permission(value)).(T), nil
 	default:
 		return t, fmt.Errorf("unsupported type conversion from int64 to %T", t)
+	}
+}
+
+func toInt64[T any](value T) (int64, error) {
+	switch v := any(value).(type) {
+	case ActivityFlag:
+		return int64(v), nil
+	case ApplicationFlag:
+		return int64(v), nil
+	case ChannelFlag:
+		return int64(v), nil
+	case GuildMemberFlag:
+		return int64(v), nil
+	case SystemChannelFlag:
+		return int64(v), nil
+	case AttachmentFlag:
+		return int64(v), nil
+	case MessageFlag:
+		return int64(v), nil
+	case RoleFlag:
+		return int64(v), nil
+	case UserFlag:
+		return int64(v), nil
+	case Permission:
+		return int64(v), nil
+	default:
+		return 0, fmt.Errorf("unsupported type conversion from %T to int64", value)
 	}
 }

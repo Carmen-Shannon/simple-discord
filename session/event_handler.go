@@ -17,16 +17,18 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
+type EventFunc func(*Session, gateway.Payload) error
+
 type EventHandler struct {
-	NamedHandlers  map[string]func(*Session, gateway.Payload) error
-	OpCodeHandlers map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error
-	CustomHandlers map[string]func(*Session, gateway.Payload) error
+	NamedHandlers  map[string]EventFunc
+	OpCodeHandlers map[gateway.GatewayOpCode]EventFunc
+	CustomHandlers map[string]EventFunc
 }
 
 // sets up a new EventHandler with the default Discord handlers
 func NewEventHandler() *EventHandler {
 	e := &EventHandler{
-		OpCodeHandlers: map[gateway.GatewayOpCode]func(*Session, gateway.Payload) error{
+		OpCodeHandlers: map[gateway.GatewayOpCode]EventFunc{
 			gateway.Heartbeat:           handleHeartbeatEvent,
 			gateway.Identify:            handleSendIdentifyEvent,
 			gateway.PresenceUpdate:      handleSendPresenceUpdateEvent,
@@ -37,10 +39,10 @@ func NewEventHandler() *EventHandler {
 			gateway.Hello:               handleHelloEvent,
 			gateway.HeartbeatACK:        handleHeartbeatACKEvent,
 		},
-		CustomHandlers: map[string]func(*Session, gateway.Payload) error{},
+		CustomHandlers: map[string]EventFunc{},
 	}
 
-	e.NamedHandlers = map[string]func(*Session, gateway.Payload) error{
+	e.NamedHandlers = map[string]EventFunc{
 		"HELLO":                         handleHelloEvent,
 		"READY":                         handleReadyEvent,
 		"RESUMED":                       handleResumedEvent,
@@ -536,13 +538,17 @@ func handleGuildRoleDeleteEvent(s *Session, p gateway.Payload) error {
 
 func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
 	if messageCreateEvent, ok := p.Data.(receiveevents.MessageCreateEvent); ok {
-		servers := s.GetServers()
-		server, exists := servers[messageCreateEvent.GuildID.ToString()]
-		if !exists {
-			return errors.New("server not found")
-		}
+		if messageCreateEvent.GuildID != nil {
+			servers := s.GetServers()
+			server, exists := servers[messageCreateEvent.GuildID.ToString()]
+			if !exists {
+				return errors.New("server not found")
+			}
 
-		server.AddMessage(*messageCreateEvent.Message)
+			server.AddMessage(*messageCreateEvent.Message)
+		} else {
+			return nil
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
