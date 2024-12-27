@@ -10,10 +10,17 @@ import (
 )
 
 type GetGlobalApplicationCommandsDto struct {
-	WithLocalizations *bool `json:"with_localizations,omitempty"`
+	WithLocalizations *bool  `json:"with_localizations,omitempty"`
+	ApplicationID     string `json:"-"`
+}
+
+type GetGlobalApplicationCommandDto struct {
+	ApplicationID string `json:"-"`
+	CommandID     string `json:"-"`
 }
 
 type BulkOverwriteGlobalApplicationCommandsDto struct {
+	ApplicationID string `json:"-"`
 	Commands []CreateGlobalApplicationCommandDto `json:"commands"`
 }
 
