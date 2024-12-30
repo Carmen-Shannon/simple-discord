@@ -31,7 +31,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
 
-	ws, err := sess.dialer()
+	ws, err := sess.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
 		return nil, err
 	}
@@ -56,6 +56,8 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 
 	return &sess, nil
 }
+
+func (s *Session)NewVoiceSession(token string, )
 
 type Session struct {
 	// Mutex for thread safety
@@ -90,6 +92,9 @@ type Session struct {
 
 	// Bot details
 	BotData *structs.Bot
+
+	// Voice session
+	VoiceSession *Session
 
 	// various channels, self explanatory what each one does
 	helloReceived chan struct{}
@@ -275,7 +280,7 @@ func (s *Session) ResumeSession() error {
 	close(s.stopHeartbeat)
 
 	// open a new connection using the cached url
-	ws, err := s.dialer()
+	ws, err := s.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
 		return err
 	}
@@ -309,7 +314,7 @@ func (s *Session) ResumeSession() error {
 func (s *Session) ReconnectSession() error {
 	close(s.stopHeartbeat)
 
-	ws, err := s.dialer()
+	ws, err := s.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
 		return err
 	}
@@ -342,22 +347,24 @@ func (s *Session) ReconnectSession() error {
 }
 
 // it dial
-func (s *Session) dialer() (*websocket.Conn, error) {
-	var url string
-	if s.GetResumeURL() != nil {
-		url = *s.GetResumeURL()
-	} else {
-		var err error
-		if s.GetToken() == nil {
-			return nil, fmt.Errorf("token not set for session")
-		}
-		url, err = requestutil.GetGatewayUrl(*s.GetToken())
-		if err != nil {
-			return nil, err
+func (s *Session) dialer(url *string, query string) (*websocket.Conn, error) {
+	if url == nil {
+		if s.GetResumeURL() != nil {
+			url = s.GetResumeURL()
+		} else {
+			var err error
+			if s.GetToken() == nil {
+				return nil, fmt.Errorf("token not set for session")
+			}
+			gatewayUrl, err := requestutil.GetGatewayUrl(*s.GetToken())
+			if err != nil {
+				return nil, err
+			}
+			url = &gatewayUrl
 		}
 	}
 
-	ws, err := websocket.Dial(url+"/?v=10&encoding=json", "", "http://localhost/")
+	ws, err := websocket.Dial(*url+query, "", "http://localhost/")
 	if err != nil {
 		return nil, err
 	}

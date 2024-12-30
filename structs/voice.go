@@ -25,3 +25,17 @@ type VoiceRegion struct {
 	IsDeprecrated bool   `json:"deprecated"`
 	IsCustom      bool   `json:"custom"`
 }
+
+type SpeakingEvent struct {
+	Speaking Bitfield[SpeakingFlag] `json:"speaking"`
+	Delay    int                    `json:"delay"`
+	SSRC     int                    `json:"ssrc"`
+}
+
+type SpeakingFlag int64
+
+const (
+	SpeakingFlagMicrophone SpeakingFlag = 1 << 0
+	SpeakingFlagSoundshare SpeakingFlag = 1 << 1
+	SpeakingFlagPriority   SpeakingFlag = 1 << 2
+)

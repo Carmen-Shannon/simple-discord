@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 	structs "github.com/Carmen-Shannon/simple-discord/structs"
 )
 
@@ -35,6 +36,18 @@ func (h *HeartbeatEvent) MarshalJSON() ([]byte, error) {
 }
 
 type HeartbeatACKEvent struct{}
+
+type VoiceReadyEvent struct {
+	SSRC    int    `json:"ssrc"`
+	IP      string `json:"ip"`
+	Port    int    `json:"port"`
+	Modes   []voice.TransportEncryptionMode  `json:"modes"`
+	HeartbeatInterval int64 `json:"heartbeat_interval"` // Ignore this field, it is not accurate
+}
+
+type SpeakingEvent struct {
+	*structs.SpeakingEvent
+}
 
 type ReadyEvent struct {
 	Version          int                        `json:"v"`

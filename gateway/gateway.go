@@ -8,18 +8,6 @@ import (
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 )
 
-// manually implement ping/pong frames
-type ControlFrame struct {
-	Fin     bool
-	RSV1    bool
-	RSV2    bool
-	RSV3    bool
-	OpCode  byte
-	Mask    bool
-	MaskKey [4]byte
-	Payload []byte
-}
-
 type GatewayOpCode int
 
 const (
@@ -38,7 +26,7 @@ const (
 
 type Payload struct {
 	OpCode    GatewayOpCode `json:"op"`
-	Data      interface{}   `json:"d"`
+	Data      any           `json:"d"`
 	Seq       *int          `json:"s,omitempty"`
 	EventName *string       `json:"t,omitempty"`
 }
@@ -49,7 +37,7 @@ func (p *Payload) ToString() string {
 }
 
 // this function will take an un-typed Payload and return the appropriate type based on the OpCode
-func NewSendEvent(eventData Payload) (interface{}, error) {
+func NewSendEvent(eventData Payload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
 		return nil, err
@@ -111,7 +99,7 @@ func NewSendEvent(eventData Payload) (interface{}, error) {
 }
 
 // this function will take an un-typed payload and return the appropriate type based on the OpCode, this will handle dispatch events
-func NewReceiveEvent(eventData Payload) (interface{}, error) {
+func NewReceiveEvent(eventData Payload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
 		return nil, err
@@ -166,7 +154,7 @@ func NewReceiveEvent(eventData Payload) (interface{}, error) {
 }
 
 // this is where un-typed payloads with an EventName will be assigned to the appropriate struct
-func handleDispatchEvent(data []byte, payload Payload) (interface{}, error) {
+func handleDispatchEvent(data []byte, payload Payload) (any, error) {
 	if payload.EventName == nil {
 		return nil, errors.New("event name is nil")
 	}
