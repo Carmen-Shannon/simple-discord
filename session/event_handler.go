@@ -6,23 +6,32 @@ import (
 	"fmt"
 	"math/rand"
 	"runtime"
+	"strings"
 	"time"
 
-	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+	gateway "github.com/Carmen-Shannon/simple-discord/structs/gateway"
+	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
 type EventFunc func(*Session, gateway.Payload) error
+type VoiceEventFunc func(*VoiceSession, voice.VoicePayload) error
+type BinaryVoiceEventFunc func(*VoiceSession, voice.BinaryVoicePayload) error
 
 type EventHandler struct {
 	NamedHandlers  map[string]EventFunc
 	OpCodeHandlers map[gateway.GatewayOpCode]EventFunc
 	CustomHandlers map[string]EventFunc
+}
+
+type VoiceEventHandler struct {
+	OpCodeHandlers map[voice.VoiceOpCode]VoiceEventFunc
+	BinaryHandlers map[voice.VoiceOpCode]BinaryVoiceEventFunc
 }
 
 // sets up a new EventHandler with the default Discord handlers
@@ -89,6 +98,39 @@ func NewEventHandler() *EventHandler {
 	return e
 }
 
+func NewVoiceEventHandler() *VoiceEventHandler {
+	e := &VoiceEventHandler{
+		OpCodeHandlers: map[voice.VoiceOpCode]VoiceEventFunc{
+			voice.Identify:                    handleSendVoiceIdentifyEvent,
+			voice.SelectProtocol:              handleSendVoiceSelectProtocolEvent,
+			voice.Ready:                       handleVoiceReadyEvent,
+			voice.Heartbeat:                   handleVoiceSendHeartbeatEvent,
+			voice.SessionDescription:          handleVoiceSessionDescriptionEvent,
+			voice.Speaking:                    handleVoiceSpeakingEvent,
+			voice.HeartbeatAck:                handleVoiceHeartbeatAckEvent,
+			voice.Resume:                      handleSendVoiceResumeEvent,
+			voice.Hello:                       handleVoiceHelloEvent,
+			voice.Resumed:                     handleVoiceResumedEvent,
+			voice.ClientsConnect:              handleVoiceClientsConnectEvent,
+			voice.ClientDisconnect:            handleVoiceClientDisconnectEvent,
+			voice.PrepareTransition:           handleVoicePrepareTransitionEvent,
+			voice.ExecuteTransition:           handleVoiceExecuteTransitionEvent,
+			voice.TransitionReady:             handleSendVoiceTransitionReadyEvent,
+			voice.PrepareEpoch:                handleVoicePrepareEpochEvent,
+			voice.MLSAnnounceCommitTransition: handleVoiceMLSAnnounceCommitTransitionEvent,
+			voice.MLSInvalidCommitWelcome:     handleSendVoiceMLSInvalidCommitWelcomeEvent,
+		},
+		BinaryHandlers: map[voice.VoiceOpCode]BinaryVoiceEventFunc{
+			voice.MLSExternalSender: handleVoiceMLSExternalSenderEvent,
+			voice.MLSKeyPackage:     handleSendVoiceMLSKeyPackageEvent,
+			voice.MLSProposals:      handleVoiceMLSProposalsEvent,
+			voice.MLSCommitWelcome:  handleSendVoiceMLSCommitWelcomeEvent,
+			voice.MLSWelcome:        handleVoiceMLSWelcomeEvent,
+		},
+	}
+	return e
+}
+
 // this is really just for helping me log more better, will remove
 var opCodeNames = map[gateway.GatewayOpCode]string{
 	gateway.Heartbeat:           "Heartbeat",
@@ -100,6 +142,66 @@ var opCodeNames = map[gateway.GatewayOpCode]string{
 	gateway.Hello:               "Hello",
 	gateway.HeartbeatACK:        "HeartbeatACK",
 	gateway.Reconnect:           "Reconnect",
+}
+
+var voiceOpCodeNames = map[voice.VoiceOpCode]string{
+	voice.Identify:                    "Identify",
+	voice.SelectProtocol:              "Select Protocol",
+	voice.Ready:                       "Ready",
+	voice.Heartbeat:                   "Heartbeat",
+	voice.SessionDescription:          "Session Description",
+	voice.Speaking:                    "Speaking",
+	voice.HeartbeatAck:                "Heartbeat Ack",
+	voice.Resume:                      "Resume",
+	voice.Hello:                       "Hello",
+	voice.Resumed:                     "Resumed",
+	voice.ClientsConnect:              "Clients Connect",
+	voice.ClientDisconnect:            "Client Disconnect",
+	voice.PrepareTransition:           "DAVE Prepare Transition",
+	voice.ExecuteTransition:           "DAVE Execute Transition",
+	voice.TransitionReady:             "DAVE Transition Ready",
+	voice.PrepareEpoch:                "DAVE Prepare Epoch",
+	voice.MLSExternalSender:           "DAVE MLS External Sender",
+	voice.MLSKeyPackage:               "DAVE MLS Key Package",
+	voice.MLSProposals:                "DAVE MLS Proposals",
+	voice.MLSCommitWelcome:            "DAVE MLS Commit Welcome",
+	voice.MLSAnnounceCommitTransition: "DAVE MLS Announce Commit Transition",
+	voice.MLSWelcome:                  "DAVE MLS Welcome",
+	voice.MLSInvalidCommitWelcome:     "DAVE MLS Invalid Commit Welcome",
+}
+
+// HandleEvent handles voice events the same way as HandleEvent for normal events
+func (e *VoiceEventHandler) HandleEvent(s *VoiceSession, payload voice.VoicePayload) error {
+	fmt.Printf("HANDLING VOICE EVENT: %v, %s\n", payload.OpCode, voiceOpCodeNames[payload.OpCode])
+	if handler, ok := e.OpCodeHandlers[payload.OpCode]; ok && handler != nil {
+		if payload.Seq != nil {
+			s.SetSequence(*payload.Seq)
+		}
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.errorChan <- fmt.Errorf("error handling voice event: %v\n%s", err, payload.ToString())
+			}
+		}()
+		return nil
+	}
+	return errors.New("no handler for voice opcode")
+}
+
+func (e *VoiceEventHandler) HandleBinaryEvent(s *VoiceSession, payload voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING BINARY EVENT")
+	if handler, ok := e.BinaryHandlers[voice.VoiceOpCode(payload.OpCode)]; ok && handler != nil {
+		if payload.SequenceNumber != nil {
+			s.SetSequence(int(*payload.SequenceNumber))
+		}
+
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.errorChan <- err
+			}
+		}()
+		return nil
+	}
+	return nil
 }
 
 // HandleEvent handles events (duh)
@@ -116,8 +218,14 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 			if payload.Seq != nil {
 				s.SetSequence(payload.Seq)
 			}
+
 			// let her rip tater chip
-			return handler(s, payload)
+			go func() {
+				if err := handler(s, payload); err != nil {
+					s.errorChan <- err
+				}
+			}()
+			return nil
 		}
 		return errors.New("no handler for opcode")
 	}
@@ -129,7 +237,14 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 		if payload.Seq != nil {
 			s.SetSequence(payload.Seq)
 		}
-		return handler(s, payload)
+
+		// let her rip tater chip
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.errorChan <- err
+			}
+		}()
+		return nil
 	}
 	return errors.New("no handler for event name")
 }
@@ -142,11 +257,179 @@ func (e *EventHandler) handleInteractionCreateEvent(s *Session, p gateway.Payloa
 	if interactionCreateEvent, ok := p.Data.(receiveevents.InteractionCreateEvent); ok {
 		name := interactionCreateEvent.Data.Name
 		if handler, ok := e.CustomHandlers[name]; ok && handler != nil {
-			return handler(s, p)
+			go func() {
+				if err := handler(s, p); err != nil {
+					s.errorChan <- err
+				}
+			}()
+			return nil
 		}
 		return errors.New("no handler for interaction")
 	}
 	return errors.New("unexpected payload data type")
+}
+
+func handleSendVoiceIdentifyEvent(s *VoiceSession, p voice.VoicePayload) error {
+	voiceIdentifyEvent := sendevents.VoiceIdentifyEvent{
+		ServerID:  *s.GetGuildID(),
+		UserID:    s.GetBotData().UserDetails.ID,
+		SessionID: *s.GetSessionID(),
+		Token:     *s.GetToken(),
+	}
+	ackPayload := voice.VoicePayload{
+		OpCode: voice.Identify,
+		Data:   voiceIdentifyEvent,
+		Seq:    s.GetSequence(),
+	}
+	data, err := json.Marshal(ackPayload)
+	if err != nil {
+		return err
+	}
+	s.Write(data)
+	return nil
+}
+
+func handleSendVoiceSelectProtocolEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE SELECT PROTOCOL EVENT")
+	fmt.Println("VOICE SELECT PROTOCOL NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceReadyEvent(s *VoiceSession, p voice.VoicePayload) error {
+	if voiceReadyEvent, ok := p.Data.(receiveevents.VoiceReadyEvent); ok {
+		s.SetUdpConn(&voice.UdpData{
+			Address: voiceReadyEvent.IP,
+			Port:    voiceReadyEvent.Port,
+			SSRC:    voiceReadyEvent.SSRC,
+			Mode:    voiceReadyEvent.Modes[0],
+		})
+	}
+	return nil
+}
+
+func handleVoiceSendHeartbeatEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE HEARTBEAT EVENT")
+	fmt.Println("VOICE HEARTBEAT NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceSessionDescriptionEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE SESSION DESCRIPTION EVENT")
+	fmt.Println("VOICE SESSION DESCRIPTION NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceSpeakingEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE SPEAKING EVENT")
+	fmt.Println("VOICE SPEAKING NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceHeartbeatAckEvent(s *VoiceSession, p voice.VoicePayload) error {
+	return nil
+}
+
+func handleSendVoiceResumeEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE RESUME EVENT")
+	fmt.Println("VOICE RESUME NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceHelloEvent(s *VoiceSession, p voice.VoicePayload) error {
+	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
+		s.SetHeartbeatACK(int(helloEvent.HeartbeatInterval))
+
+		if s.heartbeatReady != nil {
+			close(s.heartbeatReady)
+		}
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+	return startVoiceHeartbeatTimer(s)
+}
+
+func handleVoiceResumedEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE RESUMED EVENT")
+	fmt.Println("VOICE RESUMED NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceClientsConnectEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE CLIENTS CONNECT EVENT")
+	fmt.Println("VOICE CLIENTS CONNECT NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceClientDisconnectEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE CLIENT DISCONNECT EVENT")
+	fmt.Println("VOICE CLIENT DISCONNECT NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoicePrepareTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE PREPARE TRANSITION EVENT")
+	fmt.Println("VOICE PREPARE TRANSITION NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceExecuteTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE EXECUTE TRANSITION EVENT")
+	fmt.Println("VOICE EXECUTE TRANSITION NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendVoiceTransitionReadyEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE TRANSITION READY EVENT")
+	fmt.Println("VOICE TRANSITION READY NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoicePrepareEpochEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE PREPARE EPOCH EVENT")
+	fmt.Println("VOICE PREPARE EPOCH NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceMLSExternalSenderEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS EXTERNAL SENDER EVENT")
+	fmt.Println("VOICE MLS EXTERNAL SENDER NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendVoiceMLSKeyPackageEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS KEY PACKAGE EVENT")
+	fmt.Println("VOICE MLS KEY PACKAGE NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceMLSProposalsEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS PROPOSALS EVENT")
+	fmt.Println("VOICE MLS PROPOSALS NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendVoiceMLSCommitWelcomeEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS COMMIT WELCOME EVENT")
+	fmt.Println("VOICE MLS COMMIT WELCOME NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceMLSAnnounceCommitTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS ANNOUNCE COMMIT TRANSITION EVENT")
+	fmt.Println("VOICE MLS ANNOUNCE COMMIT TRANSITION NOT IMPLEMENTED")
+	return nil
+}
+
+func handleVoiceMLSWelcomeEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS WELCOME EVENT")
+	fmt.Println("VOICE MLS WELCOME NOT IMPLEMENTED")
+	return nil
+}
+
+func handleSendVoiceMLSInvalidCommitWelcomeEvent(s *VoiceSession, p voice.VoicePayload) error {
+	fmt.Println("HANDLING VOICE MLS INVALID COMMIT WELCOME EVENT")
+	fmt.Println("VOICE MLS INVALID COMMIT WELCOME NOT IMPLEMENTED")
+	return nil
 }
 
 func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
@@ -156,8 +439,38 @@ func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
-	fmt.Println("HANDLING VOICE STATE UPDATE EVENT")
-	fmt.Println("VOICE STATE UPDATE NOT IMPLEMENTED")
+	if s.Voice == nil {
+		return errors.New("voice session not initialized")
+	}
+
+	guildID := s.Voice.GetGuildID()
+	if guildID == nil {
+		return errors.New("voice session has no guild ID")
+	}
+
+	channelID := s.Voice.GetChannelID()
+	if channelID == nil {
+		return errors.New("voice session has no channel ID")
+	}
+
+	voiceStateEvent := sendevents.UpdateVoiceStateEvent{
+		GuildID:   guildID,
+		ChannelID: channelID,
+		SelfMute:  false,
+		SelfDeaf:  false,
+	}
+	voiceStatePayload := gateway.Payload{
+		OpCode: gateway.VoiceStateUpdate,
+		Data:   voiceStateEvent,
+		Seq:    s.GetSequence(),
+	}
+
+	voiceStateData, err := json.Marshal(voiceStatePayload)
+	if err != nil {
+		return err
+	}
+
+	s.Write(voiceStateData)
 	return nil
 }
 
@@ -546,6 +859,9 @@ func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
 			}
 
 			server.AddMessage(*messageCreateEvent.Message)
+			if s.BotData.UserDetails.ID.Equals(messageCreateEvent.Message.Author.ID) && s.replyAck != nil {
+				close(s.replyAck)
+			}
 		} else {
 			return nil
 		}
@@ -577,6 +893,10 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 		}
 
 		server.UpdateMessage(*messageUpdateEvent.Message)
+
+		if s.BotData.UserDetails.ID.Equals(messageUpdateEvent.Message.Author.ID) && s.replyAck != nil {
+			close(s.replyAck)
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -918,6 +1238,18 @@ func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 
 		server.UpdateVoiceState(*voiceStateUpdateEvent.VoiceState)
 		s.AddServer(server)
+
+		// yuck!!!!
+		if s.GetBotData().UserDetails.ID.Equals(voiceStateUpdateEvent.UserID) {
+			if s.GetVoiceSession() != nil {
+				s.Voice.SetSessionID(voiceStateUpdateEvent.SessionID)
+				if s.Voice.GetGuildID() != nil && s.Voice.GetToken() != nil {
+					if s.Voice.GetSessionID() != nil && s.Voice.connectReady != nil {
+						close(s.Voice.connectReady)
+					}
+				}
+			}
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -925,8 +1257,23 @@ func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
-	if _, ok := p.Data.(receiveevents.VoiceServerUpdateEvent); ok {
-		fmt.Println("VOICE SERVER UPDATE EVENT NOT IMPLEMENTED YET IDK HOW TO USE IT")
+	if voiceServerUpdateEvent, ok := p.Data.(receiveevents.VoiceServerUpdateEvent); ok {
+		if s.GetVoiceSession() == nil {
+			return errors.New("voice session not initialized")
+		}
+
+		if voiceServerUpdateEvent.Endpoint != nil && !strings.Contains(*voiceServerUpdateEvent.Endpoint, "wss://") {
+			*voiceServerUpdateEvent.Endpoint = "wss://" + *voiceServerUpdateEvent.Endpoint
+		}
+
+		if voiceServerUpdateEvent.Endpoint != nil {
+			s.Voice.SetResumeURL(*voiceServerUpdateEvent.Endpoint)
+		}
+		s.Voice.SetGuildID(voiceServerUpdateEvent.GuildID)
+		s.Voice.SetToken(voiceServerUpdateEvent.Token)
+		if s.Voice.GetSessionID() != nil && s.Voice.connectReady != nil {
+			close(s.Voice.connectReady)
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -968,10 +1315,9 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
-		// TODO: handle the rest of the ready event
-		// cache the User and Application information from the ready event in the Session or Server DONE
-		// implement sharding at some point
+		// TODO: implement sharding at some point
 		s.SetBotData(structs.NewBot(readyEvent.User, readyEvent.Application))
+		s.Voice.SetBotData(structs.NewBot(readyEvent.User, readyEvent.Application))
 		fmt.Printf("successfully connected to gateway\n---------- %s ----------\n", readyEvent.User.Username)
 	} else {
 		return errors.New("unexpected payload data type")
@@ -1047,11 +1393,59 @@ func heartbeatLoop(ticker *time.Ticker, s *Session) {
 }
 
 func startHeartbeatTimer(s *Session) error {
-	if s.HeartbeatACK == nil {
+	if s.GetHeartbeatACK() == nil {
 		return errors.New("no heartbeat interval set")
 	}
 
-	ticker := time.NewTicker(time.Duration(*s.HeartbeatACK) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(*s.GetHeartbeatACK()) * time.Millisecond)
 	go heartbeatLoop(ticker, s)
+	return nil
+}
+
+func startVoiceHeartbeatTimer(s *VoiceSession) error {
+	if s.GetHeartbeatACK() == nil {
+		return errors.New("no heartbeat interval set")
+	}
+
+	ticker := time.NewTicker(time.Duration(*s.GetHeartbeatACK()) * time.Millisecond)
+	go voiceHeartbeatLoop(ticker, s)
+	return nil
+}
+
+func voiceHeartbeatLoop(ticker *time.Ticker, s *VoiceSession) {
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := sendVoiceHeartbeatEvent(s); err != nil {
+				return
+			}
+		case <-s.stopHeartbeat:
+			return
+		}
+	}
+}
+
+func sendVoiceHeartbeatEvent(s *VoiceSession) error {
+	if s.GetConn() == nil {
+		return errors.New("connection unavailable")
+	}
+
+	heartbeatEvent := sendevents.VoiceHeartbeatEvent{
+		Timestamp: time.Now().Unix(),
+		SeqAck:    s.GetSequence(),
+	}
+	ackPayload := voice.VoicePayload{
+		OpCode: voice.Heartbeat,
+		Data:   heartbeatEvent,
+	}
+
+	heartbeatData, err := json.Marshal(ackPayload)
+	if err != nil {
+		return err
+	}
+
+	s.Write(heartbeatData)
 	return nil
 }

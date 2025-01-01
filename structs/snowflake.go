@@ -16,6 +16,12 @@ type Snowflake struct {
 	Increment *uint8     `json:"increment,omitempty"`
 }
 
+func NewSnowflake(id uint64) *Snowflake {
+	s := Snowflake{ID: id}
+	s.deconstructSnowflake()
+	return &s
+}
+
 func (s *Snowflake) Equals(other Snowflake) bool {
 	return s.ID == other.ID
 }
@@ -58,6 +64,6 @@ func (s *Snowflake) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (s *Snowflake) MarshalJSON() ([]byte, error) {
+func (s Snowflake) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.ID)
 }

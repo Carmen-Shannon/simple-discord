@@ -12,6 +12,7 @@ import (
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
 	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+	gateway_structs "github.com/Carmen-Shannon/simple-discord/structs/gateway"
 	"github.com/Carmen-Shannon/simple-discord/util"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
@@ -27,9 +28,13 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.SetServers(make(map[string]structs.Server))
 	sess.helloReceived = make(chan struct{})
 	sess.stopHeartbeat = make(chan struct{})
+	sess.replyAck = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
+
+	// set up a dummy voice session
+	sess.NewVoiceSession()
 
 	ws, err := sess.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
@@ -38,7 +43,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	sess.SetConn(ws)
 
 	// set up the goroutines to listen, read, write, and handle errors
-	go sess.Listen()
+	go sess.listen()
 	go sess.handleRead()
 	go sess.handleWrite()
 	go sess.handleError()
@@ -46,8 +51,8 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 	// stop here until the HELLO event is receieved
 	<-sess.helloReceived
 
-	var identifyData gateway.Payload
-	identifyData.OpCode = gateway.Identify
+	var identifyData gateway_structs.Payload
+	identifyData.OpCode = gateway_structs.Identify
 
 	// let her rip tater chip
 	if err := sess.EventHandler.HandleEvent(&sess, identifyData); err != nil {
@@ -56,8 +61,6 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 
 	return &sess, nil
 }
-
-func (s *Session)NewVoiceSession(token string, )
 
 type Session struct {
 	// Mutex for thread safety
@@ -94,14 +97,38 @@ type Session struct {
 	BotData *structs.Bot
 
 	// Voice session
-	VoiceSession *Session
+	Voice *VoiceSession
 
 	// various channels, self explanatory what each one does
 	helloReceived chan struct{}
 	stopHeartbeat chan struct{}
+	replyAck      chan struct{}
 	readChan      chan []byte
 	writeChan     chan []byte
 	errorChan     chan error
+}
+
+func (s *Session) JoinVoice(guildID, channelID structs.Snowflake) error {
+	if s.Voice == nil {
+		return fmt.Errorf("voice session not initialized")
+	}
+	s.Voice.SetGuildID(guildID)
+	s.Voice.SetChannelID(channelID)
+
+	// send the voice state update payload
+	var voiceStateUpdate gateway_structs.Payload
+	voiceStateUpdate.OpCode = gateway_structs.VoiceStateUpdate
+
+	if err := s.EventHandler.HandleEvent(s, voiceStateUpdate); err != nil {
+		return err
+	}
+
+	<- s.Voice.connectReady
+
+	if err := s.Voice.Connect(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // closes the hearbeat and websocket connection
@@ -117,9 +144,9 @@ func (s *Session) Exit() error {
 }
 
 // listens for new messages sent to the readChan and parses them before submitting them to the EventHandler
-func (s *Session) Listen() {
+func (s *Session) listen() {
 	for msg := range s.readChan {
-		var payload gateway.Payload
+		var payload gateway_structs.Payload
 		if err := json.Unmarshal(msg, &payload); err != nil {
 			s.errorChan <- fmt.Errorf("error parsing message: %v", err)
 			continue
@@ -134,7 +161,7 @@ func (s *Session) Listen() {
 		}
 
 		// signal when HELLO is received
-		if payload.OpCode == gateway.Hello {
+		if payload.OpCode == gateway_structs.Hello {
 			close(s.helloReceived)
 		}
 
@@ -156,6 +183,33 @@ func (s *Session) Write(data []byte) {
 }
 
 func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+	if s.replyAck == nil {
+		s.replyAck = make(chan struct{})
+	}
+
+	done := make(chan error)
+
+    go func() {
+        err := s.sendReply(interactionOptions, interaction)
+        if err != nil {
+            done <- err
+            return
+        }
+
+        // Wait for the replyAck channel to be closed
+        select {
+        case <-s.replyAck:
+            done <- nil
+        case <-time.After(10 * time.Second): // Optional timeout to prevent indefinite blocking
+            done <- fmt.Errorf("timeout waiting for replyAck")
+        }
+    }()
+
+    // Wait for the goroutine to finish
+    return <-done
+}
+
+func (s *Session) sendReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
 	interactionID := interaction.ID.ToString()
 	interactionToken := interaction.Token
 	token := *s.GetToken()
@@ -167,6 +221,8 @@ func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, i
 	if err != nil {
 		return err
 	}
+
+	// Signal that the reply is complete
 	return nil
 }
 
@@ -175,7 +231,7 @@ func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, i
 // The command key must match the name of the command that was registered using the Discord API
 // You must ACK the command within 3 seconds or Discord will assume the command failed, to properly ACK a command you must
 // call the session.Reply method
-func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway.Payload) error) {
+func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway_structs.Payload) error) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 	for name, command := range commands {
@@ -289,18 +345,19 @@ func (s *Session) ResumeSession() error {
 	// Reinitialize the channels
 	s.helloReceived = make(chan struct{})
 	s.stopHeartbeat = make(chan struct{})
+	s.replyAck = make(chan struct{})
 	s.readChan = make(chan []byte)
 	s.writeChan = make(chan []byte, 4096)
 	s.errorChan = make(chan error)
 
 	// Start the goroutines to listen, read, write, and handle errors
-	go s.Listen()
+	go s.listen()
 	go s.handleRead()
 	go s.handleWrite()
 	go s.handleError()
 
-	var resumeData gateway.Payload
-	resumeData.OpCode = gateway.Resume
+	var resumeData gateway_structs.Payload
+	resumeData.OpCode = gateway_structs.Resume
 
 	// let her rip tater chip
 	if err := s.EventHandler.HandleEvent(s, resumeData); err != nil {
@@ -323,20 +380,21 @@ func (s *Session) ReconnectSession() error {
 	// reinitialize the channels
 	s.helloReceived = make(chan struct{})
 	s.stopHeartbeat = make(chan struct{})
+	s.replyAck = make(chan struct{})
 	s.readChan = make(chan []byte)
 	s.writeChan = make(chan []byte, 4096)
 	s.errorChan = make(chan error)
 
 	// Start the goroutines to listen, read, write, and handle errors
-	go s.Listen()
+	go s.listen()
 	go s.handleRead()
 	go s.handleWrite()
 	go s.handleError()
 
 	<-s.helloReceived
 
-	var identifyData gateway.Payload
-	identifyData.OpCode = gateway.Identify
+	var identifyData gateway_structs.Payload
+	identifyData.OpCode = gateway_structs.Identify
 
 	// let her rip tater chip
 	if err := s.EventHandler.HandleEvent(s, identifyData); err != nil {
@@ -531,4 +589,18 @@ func (s *Session) SetBotData(bot *structs.Bot) {
 	defer s.Mu.Unlock()
 
 	s.BotData = bot
+}
+
+func (s *Session) SetVoiceSession(session *VoiceSession) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Voice = session
+}
+
+func (s *Session) GetVoiceSession() *VoiceSession {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.Voice
 }

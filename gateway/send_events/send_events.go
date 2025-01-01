@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
@@ -61,30 +62,30 @@ type VoiceDaveReadyForTransitionEvent struct {
 }
 
 type VoiceDaveMlsKeyPackageEvent struct {
-	OpCode uint8
+	OpCode     uint8
 	MLSMessage voice.KeyPackage
 }
 
 func (v *VoiceDaveMlsKeyPackageEvent) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewReader(data)
 
-    // Read OpCode
-    if err := binary.Read(buf, binary.BigEndian, &v.OpCode); err != nil {
-        return fmt.Errorf("failed to read opcode: %w", err)
-    }
+	// Read OpCode
+	if err := binary.Read(buf, binary.BigEndian, &v.OpCode); err != nil {
+		return fmt.Errorf("failed to read opcode: %w", err)
+	}
 
-    // Read remaining bytes into KeyPackage
-    remainingBytes := make([]byte, buf.Len())
-    if _, err := buf.Read(remainingBytes); err != nil {
-        return fmt.Errorf("failed to read remaining bytes: %w", err)
-    }
+	// Read remaining bytes into KeyPackage
+	remainingBytes := make([]byte, buf.Len())
+	if _, err := buf.Read(remainingBytes); err != nil {
+		return fmt.Errorf("failed to read remaining bytes: %w", err)
+	}
 
-    // Unmarshal remaining bytes into KeyPackage
-    if err := v.MLSMessage.UnmarshalBinary(remainingBytes); err != nil {
-        return fmt.Errorf("failed to unmarshal KeyPackage: %w", err)
-    }
+	// Unmarshal remaining bytes into KeyPackage
+	if err := v.MLSMessage.UnmarshalBinary(remainingBytes); err != nil {
+		return fmt.Errorf("failed to unmarshal KeyPackage: %w", err)
+	}
 
-    return nil
+	return nil
 }
 
 func (v *VoiceDaveMlsKeyPackageEvent) MarshalBinary() ([]byte, error) {
@@ -110,7 +111,7 @@ func (v *VoiceDaveMlsKeyPackageEvent) MarshalBinary() ([]byte, error) {
 }
 
 type VoiceDaveMlsCommitWelcomeEvent struct {
-	OpCode uint8
+	OpCode     uint8
 	MLSMessage voice.Commit
 }
 
@@ -164,6 +165,29 @@ type ResumeEvent struct {
 	Seq       int    `json:"seq"`
 }
 
+type VoiceHeartbeatEvent struct {
+	Timestamp int64 `json:"t"`
+	SeqAck    *int  `json:"seq_ack,omitempty"`
+}
+
+func (v *VoiceHeartbeatEvent) UnmarshalJSON(data []byte) error {
+	var sequence int
+	if err := json.Unmarshal(data, &sequence); err == nil {
+		v.SeqAck = &sequence
+		return nil
+	}
+
+	return errors.New("unable to unmarshal VoiceHeartbeatEvent struct")
+}
+
+func (v *VoiceHeartbeatEvent) MarshalJSON() ([]byte, error) {
+	if v.SeqAck == nil {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(*v.SeqAck)
+}
+
 type HeartbeatEvent struct {
 	LastSequence *int `json:"-"`
 }
@@ -186,7 +210,7 @@ type RequestGuildMembersEvent struct {
 }
 
 type UpdateVoiceStateEvent struct {
-	GuildID   structs.Snowflake  `json:"guild_id"`
+	GuildID   *structs.Snowflake `json:"guild_id"`
 	ChannelID *structs.Snowflake `json:"channel_id,omitempty"`
 	SelfMute  bool               `json:"self_mute"`
 	SelfDeaf  bool               `json:"self_deaf"`

@@ -7,9 +7,9 @@ import (
 	"net/http/httptest"
 	"time"
 
-	"github.com/Carmen-Shannon/simple-discord/gateway"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 	"golang.org/x/net/websocket"
 )
 

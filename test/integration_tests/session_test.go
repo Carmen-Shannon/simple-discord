@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"bou.ke/monkey"
-	"github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
 	"github.com/Carmen-Shannon/simple-discord/session"
 	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 )
 
 // example of a possible test structure for testing the actual session logic
@@ -44,6 +44,5 @@ func TestNewSession(t *testing.T) {
 // 		return "ws://localhost:443", nil
 // 	})
 // 	defer monkey.Unpatch(session.GetGatewayUrl)
-
 
 // }

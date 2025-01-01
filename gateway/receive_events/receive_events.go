@@ -5,9 +5,13 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 	structs "github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 )
+
+// TODO: finish this struct and the other receive event binary structs
+type VoiceMlsExternalSenderEvent struct {
+}
 
 type HelloEvent struct {
 	HeartbeatInterval int64 `json:"heartbeat_interval"`
@@ -35,18 +39,31 @@ func (h *HeartbeatEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(*h.LastSequence)
 }
 
-type HeartbeatACKEvent struct{}
+type HeartbeatACKEvent struct{
+	Nonce int `json:"t"`
+}
 
 type VoiceReadyEvent struct {
-	SSRC    int    `json:"ssrc"`
-	IP      string `json:"ip"`
-	Port    int    `json:"port"`
-	Modes   []voice.TransportEncryptionMode  `json:"modes"`
-	HeartbeatInterval int64 `json:"heartbeat_interval"` // Ignore this field, it is not accurate
+	SSRC              int                             `json:"ssrc"`
+	IP                string                          `json:"ip"`
+	Port              int                             `json:"port"`
+	Modes             []voice.TransportEncryptionMode `json:"modes"`
+	HeartbeatInterval int64                           `json:"heartbeat_interval"` // Ignore this field, it is not accurate
+}
+
+type VoiceResumedEvent struct{}
+
+type VoiceClientsConnectEvent struct {
+	UserIDs []structs.Snowflake `json:"user_ids"`
 }
 
 type SpeakingEvent struct {
 	*structs.SpeakingEvent
+}
+
+type VoiceSessionDescriptionEvent struct {
+	Mode      voice.TransportEncryptionMode `json:"mode"`
+	SecretKey []byte                        `json:"secret_key"`
 }
 
 type ReadyEvent struct {

@@ -99,6 +99,8 @@ func convert[T any](value int64) (T, error) {
 		return any(UserFlag(value)).(T), nil
 	case Permission:
 		return any(Permission(value)).(T), nil
+	case SpeakingFlag:
+		return any(SpeakingFlag(value)).(T), nil
 	default:
 		return t, fmt.Errorf("unsupported type conversion from int64 to %T", t)
 	}
@@ -125,6 +127,8 @@ func toInt64[T any](value T) (int64, error) {
 	case UserFlag:
 		return int64(v), nil
 	case Permission:
+		return int64(v), nil
+	case SpeakingFlag:
 		return int64(v), nil
 	default:
 		return 0, fmt.Errorf("unsupported type conversion from %T to int64", value)

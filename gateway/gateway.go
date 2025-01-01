@@ -6,38 +6,11 @@ import (
 
 	receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
 	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 )
-
-type GatewayOpCode int
-
-const (
-	Dispatch            GatewayOpCode = 0
-	Heartbeat           GatewayOpCode = 1
-	Identify            GatewayOpCode = 2
-	PresenceUpdate      GatewayOpCode = 3
-	VoiceStateUpdate    GatewayOpCode = 4
-	Resume              GatewayOpCode = 6
-	Reconnect           GatewayOpCode = 7
-	RequestGuildMembers GatewayOpCode = 8
-	InvalidSession      GatewayOpCode = 9
-	Hello               GatewayOpCode = 10
-	HeartbeatACK        GatewayOpCode = 11
-)
-
-type Payload struct {
-	OpCode    GatewayOpCode `json:"op"`
-	Data      any           `json:"d"`
-	Seq       *int          `json:"s,omitempty"`
-	EventName *string       `json:"t,omitempty"`
-}
-
-func (p *Payload) ToString() string {
-	jsonData, _ := json.Marshal(p)
-	return string(jsonData)
-}
 
 // this function will take an un-typed Payload and return the appropriate type based on the OpCode
-func NewSendEvent(eventData Payload) (any, error) {
+func NewSendEvent(eventData gateway.Payload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
 		return nil, err
@@ -45,7 +18,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 	switch eventData.OpCode {
 
-	case Heartbeat:
+	case gateway.Heartbeat:
 		var event sendevents.HeartbeatEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -53,7 +26,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 		eventData.Data = event
 		return event, nil
-	case Identify:
+	case gateway.Identify:
 		var event sendevents.IdentifyEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -61,7 +34,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 		eventData.Data = event
 		return event, nil
-	case PresenceUpdate:
+	case gateway.PresenceUpdate:
 		var event sendevents.PresenceUpdateEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -69,7 +42,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 		eventData.Data = event
 		return event, nil
-	case VoiceStateUpdate:
+	case gateway.VoiceStateUpdate:
 		var event sendevents.UpdateVoiceStateEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -77,7 +50,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 		eventData.Data = event
 		return event, nil
-	case Resume:
+	case gateway.Resume:
 		var event sendevents.ResumeEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -85,7 +58,7 @@ func NewSendEvent(eventData Payload) (any, error) {
 
 		eventData.Data = event
 		return event, nil
-	case RequestGuildMembers:
+	case gateway.RequestGuildMembers:
 		var event sendevents.RequestGuildMembersEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -99,49 +72,49 @@ func NewSendEvent(eventData Payload) (any, error) {
 }
 
 // this function will take an un-typed payload and return the appropriate type based on the OpCode, this will handle dispatch events
-func NewReceiveEvent(eventData Payload) (any, error) {
+func NewReceiveEvent(eventData gateway.Payload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
 		return nil, err
 	}
 
 	switch eventData.OpCode {
-	case Dispatch:
+	case gateway.Dispatch:
 		event, err := handleDispatchEvent(jsonData, eventData)
 		if err != nil {
 			return nil, err
 		}
 		eventData.Data = event
 		return event, nil
-	case Heartbeat:
+	case gateway.Heartbeat:
 		var event receiveevents.HelloEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
 		eventData.Data = event
 		return event, nil
-	case Reconnect:
+	case gateway.Reconnect:
 		var event receiveevents.ReconnectEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
 		eventData.Data = event
 		return event, nil
-	case InvalidSession:
+	case gateway.InvalidSession:
 		var event receiveevents.InvalidSessionEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
 		eventData.Data = event
 		return event, nil
-	case Hello:
+	case gateway.Hello:
 		var event receiveevents.HelloEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
 		eventData.Data = event
 		return event, nil
-	case HeartbeatACK:
+	case gateway.HeartbeatACK:
 		var event receiveevents.HeartbeatACKEvent
 		if err := json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
@@ -154,7 +127,7 @@ func NewReceiveEvent(eventData Payload) (any, error) {
 }
 
 // this is where un-typed payloads with an EventName will be assigned to the appropriate struct
-func handleDispatchEvent(data []byte, payload Payload) (any, error) {
+func handleDispatchEvent(data []byte, payload gateway.Payload) (any, error) {
 	if payload.EventName == nil {
 		return nil, errors.New("event name is nil")
 	}
