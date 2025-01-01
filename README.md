@@ -26,6 +26,9 @@ This list will change as I want to add things
 - [ ] Gateway management
     - [x] Standard gateway management
     - [ ] Voice gateway management
+        - [x] Voice Gateway Connection/Upkeep
+        - [ ] Voice Gateway UDP Connection/Upkeep
+        - [ ] DAVE Voice support
 - [x] Event handler
 - [ ] Shard management
 - [ ] HTTP requests
