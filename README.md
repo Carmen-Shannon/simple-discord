@@ -75,8 +75,8 @@ func main() {
         // this is boilerplate, you don't need to include it but it does allow you to use the interactionEvent directly and access all of the associated properties
         interactionEvent, ok := payload.Data.(receieveevents.InteractionCreateEvent)
         if !ok {
-			return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
-		}
+            return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
+        }
 
         // the bot needs to reply and ACK an interaction, so you need to call sess.Reply() at some point before returning.
         // discord requires an ACK within 3 seconds, but you are able to edit the message by sending follow-up HTTP requests
