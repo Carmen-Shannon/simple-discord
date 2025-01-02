@@ -114,7 +114,7 @@ Registering commands with the Discord API:
 import(
     requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
     "github.com/Carmen-Shannon/simple-discord/structs"
-	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+    "github.com/Carmen-Shannon/simple-discord/structs/dto"
     "github.com/Carmen-Shannon/simple-discord/util"
 )
 
@@ -129,8 +129,8 @@ func main() {
 
     _, err := requestutil.CreateGuildApplicationCommand(testCommand, applicationID, guildID, token)
     if err != nil {
-		log.Fatalf("error creating command: %v", err)
-	}
+        log.Fatalf("error creating command: %v", err)
+    }
 }
 ```
 
