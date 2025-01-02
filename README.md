@@ -83,9 +83,9 @@ func main() {
         // use NewInteractionResponseOptions to create the response that Reply needs
         response := structs.NewInteractionResponseOptions()
         // see strucs.InteractionResponseType for available types
-		response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
+        response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
         // see structs.MessageFlag for available message flags
-		response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
+        response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
 
         response.SetContent("Hello world!")
         if err := sess.Reply(response, interactionEvent.Interaction); err != nil {
