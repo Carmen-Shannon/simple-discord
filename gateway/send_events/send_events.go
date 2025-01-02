@@ -211,7 +211,7 @@ type RequestGuildMembersEvent struct {
 
 type UpdateVoiceStateEvent struct {
 	GuildID   *structs.Snowflake `json:"guild_id"`
-	ChannelID *structs.Snowflake `json:"channel_id,omitempty"`
+	ChannelID *structs.Snowflake `json:"channel_id"`
 	SelfMute  bool               `json:"self_mute"`
 	SelfDeaf  bool               `json:"self_deaf"`
 }

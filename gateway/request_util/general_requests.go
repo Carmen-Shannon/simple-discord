@@ -46,7 +46,7 @@ func HttpRequest(method string, path string, headers map[string]string, body []b
 	return respBody, nil
 }
 
-func GetGatewayUrl(token string) (string, error) {
+func GetGatewayUrl() (string, error) {
 	botUrl, err := util.GetBotUrl()
 	if err != nil {
 		return "", err
@@ -58,7 +58,6 @@ func GetGatewayUrl(token string) (string, error) {
 	}
 
 	headers := map[string]string{
-		"Authorization": "Bot " + token,
 		"User-Agent":    fmt.Sprintf("DiscordBot (%s, %s)", botUrl, botVersion),
 	}
 
@@ -73,4 +72,33 @@ func GetGatewayUrl(token string) (string, error) {
 	}
 
 	return gatewayResponse.URL, nil
+}
+
+func GetGatewayBot(token string) (*structs.GetGatewayBotResponse, error) {
+	botUrl, err := util.GetBotUrl()
+	if err != nil {
+		return nil, err
+	}
+
+	botVersion, err := util.GetBotVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	headers := map[string]string{
+		"Authorization": "Bot " + token,
+		"User-Agent":    fmt.Sprintf("DiscordBot (%s, %s)", botUrl, botVersion),
+	}
+
+	resp, err := HttpRequest("GET", "/gateway/bot", headers, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var gatewayResponse structs.GetGatewayBotResponse
+	if err := json.Unmarshal(resp, &gatewayResponse); err != nil {
+		return nil, err
+	}
+
+	return &gatewayResponse, nil
 }

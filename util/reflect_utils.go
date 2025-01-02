@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-func UpdateFields(dst, src interface{}) error {
+func UpdateFields(dst, src any) error {
 	dstVal := reflect.ValueOf(dst).Elem()
 	srcVal := reflect.ValueOf(src).Elem()
 

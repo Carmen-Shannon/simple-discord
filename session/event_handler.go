@@ -303,14 +303,20 @@ func handleVoiceReadyEvent(s *VoiceSession, p voice.VoicePayload) error {
 			SSRC:    voiceReadyEvent.SSRC,
 			Mode:    voiceReadyEvent.Modes[0],
 		})
+	} else {
+		return errors.New("unexpected payload data type")
 	}
 	return nil
 }
 
 func handleVoiceSendHeartbeatEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE HEARTBEAT EVENT")
-	fmt.Println("VOICE HEARTBEAT NOT IMPLEMENTED")
-	return nil
+	if heartbeatEvent, ok := p.Data.(sendevents.VoiceHeartbeatEvent); ok {
+		if heartbeatEvent.SeqAck != nil {
+			s.SetSequence(*heartbeatEvent.SeqAck)
+		}
+		return sendVoiceHeartbeatEvent(s)
+	}
+	return errors.New("unexpected payload data type")
 }
 
 func handleVoiceSessionDescriptionEvent(s *VoiceSession, p voice.VoicePayload) error {
@@ -330,8 +336,16 @@ func handleVoiceHeartbeatAckEvent(s *VoiceSession, p voice.VoicePayload) error {
 }
 
 func handleSendVoiceResumeEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE RESUME EVENT")
-	fmt.Println("VOICE RESUME NOT IMPLEMENTED")
+	if _, ok := p.Data.(sendevents.VoiceResumeEvent); ok {
+		data, err := json.Marshal(p)
+		if err != nil {
+			return err
+		}
+
+		s.Write(data)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
 	return nil
 }
 
@@ -349,8 +363,11 @@ func handleVoiceHelloEvent(s *VoiceSession, p voice.VoicePayload) error {
 }
 
 func handleVoiceResumedEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE RESUMED EVENT")
-	fmt.Println("VOICE RESUMED NOT IMPLEMENTED")
+	if _, ok := p.Data.(receiveevents.VoiceResumedEvent); ok {
+		close(s.resumeReady)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
 	return nil
 }
 
@@ -439,30 +456,25 @@ func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
 }
 
 func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
-	if s.Voice == nil {
+	if s.GetVoiceSession() == nil {
 		return errors.New("voice session not initialized")
 	}
 
-	guildID := s.Voice.GetGuildID()
+	guildID := s.GetVoiceSession().GetGuildID()
 	if guildID == nil {
 		return errors.New("voice session has no guild ID")
 	}
 
-	channelID := s.Voice.GetChannelID()
-	if channelID == nil {
-		return errors.New("voice session has no channel ID")
-	}
-
 	voiceStateEvent := sendevents.UpdateVoiceStateEvent{
 		GuildID:   guildID,
-		ChannelID: channelID,
+		ChannelID: s.GetVoiceSession().GetChannelID(),
 		SelfMute:  false,
 		SelfDeaf:  false,
 	}
 	voiceStatePayload := gateway.Payload{
 		OpCode: gateway.VoiceStateUpdate,
 		Data:   voiceStateEvent,
-		Seq:    s.GetSequence(),
+		Seq:    s.GetVoiceSession().GetSequence(),
 	}
 
 	voiceStateData, err := json.Marshal(voiceStatePayload)
@@ -509,6 +521,9 @@ func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
 			Device:  "discord",
 		},
 		Intents: structs.GetIntents(s.GetIntents()),
+	}
+	if s.GetShard() != nil && s.GetShards() != nil {
+		identifyEvent.Shard = &[]int{*s.GetShard(), *s.GetShards()}
 	}
 	identifyPayload := gateway.Payload{
 		OpCode: gateway.Identify,
@@ -758,7 +773,7 @@ func handleGuildMemberUpdateEvent(s *Session, p gateway.Payload) error {
 			return errors.New("user not in server")
 		}
 
-		if err := util.UpdateFields(currentMember, guildMemberUpdateEvent); err != nil {
+		if err := util.UpdateFields(currentMember, &guildMemberUpdateEvent); err != nil {
 			return err
 		}
 
@@ -859,9 +874,6 @@ func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
 			}
 
 			server.AddMessage(*messageCreateEvent.Message)
-			if s.BotData.UserDetails.ID.Equals(messageCreateEvent.Message.Author.ID) && s.replyAck != nil {
-				close(s.replyAck)
-			}
 		} else {
 			return nil
 		}
@@ -893,10 +905,6 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 		}
 
 		server.UpdateMessage(*messageUpdateEvent.Message)
-
-		if s.BotData.UserDetails.ID.Equals(messageUpdateEvent.Message.Author.ID) && s.replyAck != nil {
-			close(s.replyAck)
-		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -1244,8 +1252,8 @@ func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 			if s.GetVoiceSession() != nil {
 				s.Voice.SetSessionID(voiceStateUpdateEvent.SessionID)
 				if s.Voice.GetGuildID() != nil && s.Voice.GetToken() != nil {
-					if s.Voice.GetSessionID() != nil && s.Voice.connectReady != nil {
-						close(s.Voice.connectReady)
+					if s.Voice.GetSessionID() != nil && !s.Voice.IsConnectReady() && !s.Voice.GetConnected() {
+						s.Voice.SetConnectReady(true)
 					}
 				}
 			}
@@ -1271,8 +1279,8 @@ func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
 		}
 		s.Voice.SetGuildID(voiceServerUpdateEvent.GuildID)
 		s.Voice.SetToken(voiceServerUpdateEvent.Token)
-		if s.Voice.GetSessionID() != nil && s.Voice.connectReady != nil {
-			close(s.Voice.connectReady)
+		if s.Voice.GetSessionID() != nil && !s.Voice.IsConnectReady() && !s.Voice.GetConnected() {
+			s.Voice.SetConnectReady(true)
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -1315,10 +1323,8 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
-		// TODO: implement sharding at some point
-		s.SetBotData(structs.NewBot(readyEvent.User, readyEvent.Application))
-		s.Voice.SetBotData(structs.NewBot(readyEvent.User, readyEvent.Application))
-		fmt.Printf("successfully connected to gateway\n---------- %s ----------\n", readyEvent.User.Username)
+		s.SetBotData(structs.NewBotData(readyEvent.User, readyEvent.Application))
+		s.Voice.SetBotData(structs.NewBotData(readyEvent.User, readyEvent.Application))
 	} else {
 		return errors.New("unexpected payload data type")
 	}

@@ -1,12 +1,12 @@
 package structs
 
-type Bot struct {
+type BotData struct {
 	UserDetails        *User
 	ApplicationDetails *Application
 }
 
-func NewBot(user User, application Application) *Bot {
-	return &Bot{
+func NewBotData(user User, application Application) *BotData {
+	return &BotData{
 		UserDetails:        &user,
 		ApplicationDetails: &application,
 	}

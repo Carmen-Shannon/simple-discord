@@ -26,7 +26,7 @@ func TestNewSession(t *testing.T) {
 	})
 	defer monkey.UnpatchInstanceMethod(reflect.TypeOf(&session.EventHandler{}), "HandleEvent")
 
-	mockSession, err := session.NewSession("test", []structs.Intent{})
+	mockSession, err := session.NewSession("test", []structs.Intent{}, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)

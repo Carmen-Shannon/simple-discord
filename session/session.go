@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,25 +17,32 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/util"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
-	"golang.org/x/net/websocket"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
+type CommandFunc func(s *Session, p gateway_structs.Payload) error
+
 // handles establishing a new session with the discord gateway
-func NewSession(token string, intents []structs.Intent) (*Session, error) {
+func NewSession(token string, intents []structs.Intent, shard *int) (*Session, error) {
 	var sess Session
+	sess.Mu = &sync.Mutex{}
 	sess.SetToken(&token)
 	sess.SetEventHandler(NewEventHandler())
 	sess.SetIntents(intents)
 	sess.SetServers(make(map[string]structs.Server))
 	sess.helloReceived = make(chan struct{})
 	sess.stopHeartbeat = make(chan struct{})
-	sess.replyAck = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
 
 	// set up a dummy voice session
 	sess.NewVoiceSession()
+
+	if shard != nil {
+		sess.SetShard(shard)
+	}
 
 	ws, err := sess.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
@@ -64,7 +72,7 @@ func NewSession(token string, intents []structs.Intent) (*Session, error) {
 
 type Session struct {
 	// Mutex for thread safety
-	Mu sync.Mutex
+	Mu *sync.Mutex
 
 	// Websocket connection
 	Conn *websocket.Conn
@@ -94,26 +102,35 @@ type Session struct {
 	Servers map[string]structs.Server
 
 	// Bot details
-	BotData *structs.Bot
+	BotData *structs.BotData
 
 	// Voice session
 	Voice *VoiceSession
 
+	// Shard ID
+	Shard *int
+
+	// Shard count
+	Shards *int
+
+	// Max identify concurrency
+	MaxConcurrency *int
+
 	// various channels, self explanatory what each one does
 	helloReceived chan struct{}
 	stopHeartbeat chan struct{}
-	replyAck      chan struct{}
 	readChan      chan []byte
 	writeChan     chan []byte
 	errorChan     chan error
 }
 
 func (s *Session) JoinVoice(guildID, channelID structs.Snowflake) error {
-	if s.Voice == nil {
+	if s.GetVoiceSession() == nil {
 		return fmt.Errorf("voice session not initialized")
 	}
-	s.Voice.SetGuildID(guildID)
-	s.Voice.SetChannelID(channelID)
+	s.GetVoiceSession().SetGuildID(guildID)
+	s.GetVoiceSession().SetChannelID(channelID)
+	s.GetVoiceSession().SetBotData(s.GetBotData())
 
 	// send the voice state update payload
 	var voiceStateUpdate gateway_structs.Payload
@@ -123,11 +140,41 @@ func (s *Session) JoinVoice(guildID, channelID structs.Snowflake) error {
 		return err
 	}
 
-	<- s.Voice.connectReady
+	// wait for the voice gateway to be ready, timeout after 5 seconds
+	select {
+	case <-s.GetVoiceSession().connectReady:
+		if err := s.GetVoiceSession().Connect(); err != nil {
+			return err
+		}
+	case <-time.After(5 * time.Second):
+		return fmt.Errorf("voice gateway did not connect in time")
+	}
 
-	if err := s.Voice.Connect(); err != nil {
+	return nil
+}
+
+func (s *Session) LeaveVoice(guildID structs.Snowflake) error {
+	if s.GetVoiceSession() == nil {
+		return fmt.Errorf("voice session not initialized")
+	}
+	s.GetVoiceSession().SetGuildID(guildID)
+	s.GetVoiceSession().ClearChannelID()
+
+	// send the voice state update payload
+	var voiceStateUpdate gateway_structs.Payload
+	voiceStateUpdate.OpCode = gateway_structs.VoiceStateUpdate
+
+	if err := s.EventHandler.HandleEvent(s, voiceStateUpdate); err != nil {
 		return err
 	}
+
+	if err := s.GetVoiceSession().Exit(); err != nil {
+		s.SetVoiceSession(nil)
+		s.NewVoiceSession()
+		return err
+	}
+
+	s.NewVoiceSession()
 	return nil
 }
 
@@ -137,7 +184,7 @@ func (s *Session) Exit() error {
 		close(s.stopHeartbeat)
 	}
 	// Close the connection
-	if err := s.Conn.Close(); err != nil {
+	if err := s.Conn.Close(websocket.StatusNormalClosure, "disconnect"); err != nil {
 		return fmt.Errorf("error closing connection: %v", err)
 	}
 	return nil
@@ -183,30 +230,20 @@ func (s *Session) Write(data []byte) {
 }
 
 func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
-	if s.replyAck == nil {
-		s.replyAck = make(chan struct{})
-	}
-
 	done := make(chan error)
 
-    go func() {
-        err := s.sendReply(interactionOptions, interaction)
-        if err != nil {
-            done <- err
-            return
-        }
+	go func() {
+		err := s.sendReply(interactionOptions, interaction)
+		if err != nil {
+			done <- err
+			return
+		}
 
-        // Wait for the replyAck channel to be closed
-        select {
-        case <-s.replyAck:
-            done <- nil
-        case <-time.After(10 * time.Second): // Optional timeout to prevent indefinite blocking
-            done <- fmt.Errorf("timeout waiting for replyAck")
-        }
-    }()
+		done <- nil
+	}()
 
-    // Wait for the goroutine to finish
-    return <-done
+	// Wait for the goroutine to finish
+	return <-done
 }
 
 func (s *Session) sendReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
@@ -231,7 +268,7 @@ func (s *Session) sendReply(interactionOptions structs.InteractionResponseOption
 // The command key must match the name of the command that was registered using the Discord API
 // You must ACK the command within 3 seconds or Discord will assume the command failed, to properly ACK a command you must
 // call the session.Reply method
-func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway_structs.Payload) error) {
+func (s *Session) RegisterCommands(commands map[string]CommandFunc) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 	for name, command := range commands {
@@ -242,47 +279,57 @@ func (s *Session) RegisterCommands(commands map[string]func(*Session, gateway_st
 // reads frames from the gateway in increments of 1024 bytes
 // dynamically resizes the buffer array to fit the full message and writes the message to the readChan
 func (s *Session) handleRead() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	defer close(s.readChan)
 
-	var buffers [][]byte
+	var buffer bytes.Buffer
+	s.Conn.SetReadLimit(-1)
 
 	for {
-		tempBuffer := make([]byte, 1024)
-		n, err := s.Conn.Read(tempBuffer)
+		_, bytes, err := s.Conn.Read(ctx)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			s.errorChan <- err
+			s.errorChan <- fmt.Errorf("error reading from websocket: %v", err)
 			break
 		}
 
-		buffers = append(buffers, tempBuffer[:n])
+		buffer.Write(bytes)
 
 		for {
-			combinedBuffer := bytes.Join(buffers, nil)
-			decoder := json.NewDecoder(bytes.NewReader(combinedBuffer))
+			decoder := json.NewDecoder(&buffer)
 			var msg json.RawMessage
-			startOffset := len(combinedBuffer)
+			startOffset := buffer.Len()
 
 			if err := decoder.Decode(&msg); err != nil {
 				if err == io.EOF || err == io.ErrUnexpectedEOF {
 					// incomplete message
+					if startOffset <= buffer.Len() {
+						buffer.Truncate(startOffset)
+					}
 					break
 				}
 				s.errorChan <- fmt.Errorf("error decoding raw message: %v", err)
-				buffers = nil
+				buffer.Reset()
 				break
 			}
 
 			s.readChan <- msg
 
-			offset := startOffset - int(decoder.InputOffset())
-			if offset > 0 && offset <= len(combinedBuffer) {
-				remainingData := combinedBuffer[decoder.InputOffset():]
-				buffers = [][]byte{remainingData}
+			var remainingData []byte
+			if int(decoder.InputOffset()) > len(buffer.Bytes()) {
+				buffer.Reset()
 			} else {
-				buffers = nil
+				remainingData = buffer.Bytes()[decoder.InputOffset():]
+			}
+
+			if len(remainingData) > 0 {
+				buffer.Reset()
+				buffer.Write(remainingData)
+			} else {
+				buffer.Reset()
 			}
 		}
 	}
@@ -292,6 +339,8 @@ func (s *Session) handleRead() {
 // has a retry mechanism with a delay of 2 seconds
 // after 3 retries, give up and go home
 func (s *Session) handleWrite() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	defer close(s.writeChan)
 
 	retryCount := 0
@@ -300,7 +349,12 @@ func (s *Session) handleWrite() {
 
 	for data := range s.writeChan {
 		for {
-			if _, err := s.Conn.Write(data); err != nil {
+			var msg json.RawMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				s.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
+				break
+			}
+			if err := wsjson.Write(ctx, s.Conn, msg); err != nil {
 				if retryCount < maxRetries {
 					retryCount++
 					log.Printf("write error: %v, retrying %d/%d", err, retryCount, maxRetries)
@@ -335,6 +389,11 @@ func (s *Session) handleError() {
 func (s *Session) ResumeSession() error {
 	close(s.stopHeartbeat)
 
+	err := s.Voice.ResumeSession()
+	if err != nil {
+		return err
+	}
+
 	// open a new connection using the cached url
 	ws, err := s.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
@@ -345,7 +404,6 @@ func (s *Session) ResumeSession() error {
 	// Reinitialize the channels
 	s.helloReceived = make(chan struct{})
 	s.stopHeartbeat = make(chan struct{})
-	s.replyAck = make(chan struct{})
 	s.readChan = make(chan []byte)
 	s.writeChan = make(chan []byte, 4096)
 	s.errorChan = make(chan error)
@@ -371,6 +429,8 @@ func (s *Session) ResumeSession() error {
 func (s *Session) ReconnectSession() error {
 	close(s.stopHeartbeat)
 
+	s.NewVoiceSession()
+
 	ws, err := s.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
 		return err
@@ -380,7 +440,6 @@ func (s *Session) ReconnectSession() error {
 	// reinitialize the channels
 	s.helloReceived = make(chan struct{})
 	s.stopHeartbeat = make(chan struct{})
-	s.replyAck = make(chan struct{})
 	s.readChan = make(chan []byte)
 	s.writeChan = make(chan []byte, 4096)
 	s.errorChan = make(chan error)
@@ -406,6 +465,8 @@ func (s *Session) ReconnectSession() error {
 
 // it dial
 func (s *Session) dialer(url *string, query string) (*websocket.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
 	if url == nil {
 		if s.GetResumeURL() != nil {
 			url = s.GetResumeURL()
@@ -414,15 +475,22 @@ func (s *Session) dialer(url *string, query string) (*websocket.Conn, error) {
 			if s.GetToken() == nil {
 				return nil, fmt.Errorf("token not set for session")
 			}
-			gatewayUrl, err := requestutil.GetGatewayUrl(*s.GetToken())
+			gatewayBot, err := requestutil.GetGatewayBot(*s.GetToken())
 			if err != nil {
 				return nil, err
 			}
-			url = &gatewayUrl
+			url = &gatewayBot.URL
+			s.SetShards(&gatewayBot.Shards)
+			if s.GetShard() == nil {
+				s.SetShard(util.ToPtr(0))
+			}
+			if s.GetMaxConcurrency() == nil {
+				s.SetMaxConcurrency(util.ToPtr(gatewayBot.SessionStartLimit.MaxConcurrency))
+			}
 		}
 	}
 
-	ws, err := websocket.Dial(*url+query, "", "http://localhost/")
+	ws, _, err := websocket.Dial(ctx, *url+query, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -570,6 +638,19 @@ func (s *Session) GetServerByName(name string) *structs.Server {
 	return nil
 }
 
+func (s *Session) GetServerByGuildID(guildID structs.Snowflake) *structs.Server {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	for _, guild := range s.Servers {
+		if guild.ID.Equals(guildID) {
+			return &guild
+		}
+	}
+
+	return nil
+}
+
 func (s *Session) AddServer(server structs.Server) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
@@ -577,14 +658,14 @@ func (s *Session) AddServer(server structs.Server) {
 	s.Servers[server.ID.ToString()] = server
 }
 
-func (s *Session) GetBotData() *structs.Bot {
+func (s *Session) GetBotData() *structs.BotData {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
 	return s.BotData
 }
 
-func (s *Session) SetBotData(bot *structs.Bot) {
+func (s *Session) SetBotData(bot *structs.BotData) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
@@ -603,4 +684,46 @@ func (s *Session) GetVoiceSession() *VoiceSession {
 	defer s.Mu.Unlock()
 
 	return s.Voice
+}
+
+func (s *Session) GetShard() *int {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.Shard
+}
+
+func (s *Session) SetShard(shard *int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Shard = shard
+}
+
+func (s *Session) GetShards() *int {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.Shards
+}
+
+func (s *Session) SetShards(shards *int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.Shards = shards
+}
+
+func (s *Session) GetMaxConcurrency() *int {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	return s.MaxConcurrency
+}
+
+func (s *Session) SetMaxConcurrency(maxConcurrency *int) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	s.MaxConcurrency = maxConcurrency
 }

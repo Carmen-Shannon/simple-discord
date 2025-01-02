@@ -2,24 +2,33 @@ package session
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
+	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
 	voice_gateway "github.com/Carmen-Shannon/simple-discord/gateway/voice"
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/structs/voice"
-	"golang.org/x/net/websocket"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
+
+var ErrConnClosed = errors.New("use of closed network connection")
 
 type VoiceSession struct {
 	// Mutex for thread safety
-	Mu sync.Mutex
+	Mu *sync.Mutex
+
+	// setting up a one-time closure of the connectReady channel
+	once sync.Once
 
 	// Websocket connection
 	Conn *websocket.Conn
@@ -52,35 +61,67 @@ type VoiceSession struct {
 	Connected bool
 
 	// Bot details
-	BotData *structs.Bot
+	BotData *structs.BotData
 
 	// UDP Connection details
 	UdpConn *voice.UdpData
+
+	// checking if the voice session is ready to connect
+	isConnectReady bool
 
 	// channels
 	connectReady   chan struct{}
 	heartbeatReady chan struct{}
 	stopHeartbeat  chan struct{}
+	resumeReady    chan struct{}
 	readChan       chan []byte
 	writeChan      chan []byte
 	errorChan      chan error
 }
 
-func (s *Session) NewVoiceSession() {
+func NewVoiceSession() *VoiceSession {
 	var vs VoiceSession
+	vs.Mu = &sync.Mutex{}
+	vs.once = sync.Once{}
 	vs.SetEventHandler(NewVoiceEventHandler())
 	vs.SetConnected(false)
-	vs.connectReady = make(chan struct{})
+	vs.SetConnectReady(false)
 	vs.heartbeatReady = make(chan struct{})
 	vs.stopHeartbeat = make(chan struct{})
+	vs.connectReady = make(chan struct{})
 	vs.readChan = make(chan []byte)
 	vs.writeChan = make(chan []byte, 4096)
 	vs.errorChan = make(chan error)
 
-	s.SetVoiceSession(&vs)
+	return &vs
+}
+
+func (s *Session) NewVoiceSession() {
+	vs := NewVoiceSession()
+	vs.SetBotData(s.GetBotData())
+	s.SetVoiceSession(vs)
+}
+
+func (v *VoiceSession) Exit() error {
+	if v.stopHeartbeat != nil {
+		close(v.stopHeartbeat)
+		v.stopHeartbeat = nil
+	}
+
+	if v.GetConnected() {
+		if err := v.GetConn().Close(websocket.StatusNormalClosure, "disconnect"); err != nil {
+			return fmt.Errorf("error closing voice websocket: %v", err)
+		}
+	}
+
+	*v = *NewVoiceSession()
+	return nil
 }
 
 func (v *VoiceSession) Connect() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	if v.GetConnected() {
 		return nil
 	}
@@ -88,7 +129,7 @@ func (v *VoiceSession) Connect() error {
 		return errors.New("voice session requires a resume URL to connect")
 	}
 
-	conn, err := websocket.Dial(*v.GetResumeURL()+"?v=8", "", "http://localhost")
+	conn, _, err := websocket.Dial(ctx, *v.GetResumeURL()+"?v=8", nil)
 	if err != nil {
 		return err
 	}
@@ -108,6 +149,55 @@ func (v *VoiceSession) Connect() error {
 	}
 
 	<-v.heartbeatReady
+	v.SetConnected(true)
+	return nil
+}
+
+// when a session is disconnected and can be resumed, use this
+func (v *VoiceSession) ResumeSession() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if v.GetGuildID() == nil || v.GetSessionID() == nil || v.GetToken() == nil || v.GetSequence() == nil {
+		return errors.New("voice session requires a guild ID, session ID, and token to resume")
+	}
+
+	v.heartbeatReady = make(chan struct{})
+	v.stopHeartbeat = make(chan struct{})
+	v.connectReady = make(chan struct{})
+	v.readChan = make(chan []byte)
+	v.writeChan = make(chan []byte, 4096)
+	v.errorChan = make(chan error)
+
+	v.SetConnected(false)
+	v.SetConnectReady(false)
+
+	conn, _, err := websocket.Dial(ctx, *v.GetResumeURL()+"?v=8", nil)
+	if err != nil {
+		return err
+	}
+	v.SetConn(conn)
+
+	go v.listen()
+	go v.handleRead()
+	go v.handleWrite()
+	go v.handleError()
+
+	// send the resume payload
+	var resumePayload voice.VoicePayload
+	resumePayload.OpCode = voice.Resume
+	resumePayload.Data = sendevents.VoiceResumeEvent{
+		ServerID:  *v.GetGuildID(),
+		SessionID: *v.GetSessionID(),
+		Token:     *v.GetToken(),
+		SeqAck:    *v.GetSequence(),
+	}
+
+	if err := v.EventHandler.HandleEvent(v, resumePayload); err != nil {
+		return err
+	}
+
+	<-v.resumeReady
 	v.SetConnected(true)
 	return nil
 }
@@ -163,74 +253,92 @@ func (v *VoiceSession) listen() {
 // reads frames from the gateway in increments of 1024 bytes
 // dynamically resizes the buffer array to fit the full message and writes the message to the readChan
 func (v *VoiceSession) handleRead() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	defer close(v.readChan)
 
-	var buffers [][]byte
+	var buffer bytes.Buffer
+	v.Conn.SetReadLimit(-1)
 
 	for {
-		tempBuffer := make([]byte, 1024)
-		n, err := v.Conn.Read(tempBuffer)
+		_, bytes, err := v.Conn.Read(ctx)
 		if err != nil {
 			if err == io.EOF {
 				break
+			} else if errors.As(err, &websocket.CloseError{Code: websocket.StatusNormalClosure}) {
+				v.Exit()
+				return
 			}
-			v.errorChan <- err
+			v.errorChan <- fmt.Errorf("error reading from voice websocket: %v", err)
 			break
 		}
 
-		buffers = append(buffers, tempBuffer[:n])
+		buffer.Write(bytes)
 
 		for {
-			combinedBuffer := bytes.Join(buffers, nil)
-			decoder := json.NewDecoder(bytes.NewReader(combinedBuffer))
+			decoder := json.NewDecoder(&buffer)
 			var msg json.RawMessage
-			startOffset := len(combinedBuffer)
+			startOffset := buffer.Len()
 
 			if err := decoder.Decode(&msg); err != nil {
 				if err == io.EOF || err == io.ErrUnexpectedEOF {
 					// incomplete message
+					if startOffset <= buffer.Len() {
+						buffer.Truncate(startOffset)
+					}
 					break
 				}
 
 				// If JSON decoding fails, attempt to decode as binary
-				payload, err := v.decodeBinaryMessage(combinedBuffer)
+				payload, err := v.decodeBinaryMessage(buffer.Bytes())
 				if payload == nil && err == nil {
 					// incomplete message
+					if startOffset <= buffer.Len() {
+						buffer.Truncate(startOffset)
+					}
 					break
 				} else if err != nil {
-					v.errorChan <- fmt.Errorf("error decoding message: %v", err)
-					buffers = nil
+					v.errorChan <- fmt.Errorf("error decoding binary message: %v", err)
+					buffer.Reset()
 					break
 				}
 
 				payloadBytes, err := payload.MarshalBinary()
 				if err != nil {
 					v.errorChan <- fmt.Errorf("error marshalling binary message: %v", err)
-					buffers = nil
+					buffer.Reset()
 					break
 				}
 
 				v.readChan <- payloadBytes
+				buffer.Reset()
 				continue
 			}
 
 			v.readChan <- msg
 
-			offset := startOffset - int(decoder.InputOffset())
-			if offset > 0 && offset <= len(combinedBuffer) {
-				remainingData := combinedBuffer[decoder.InputOffset():]
-				buffers = [][]byte{remainingData}
+			var remainingData []byte
+			if int(decoder.InputOffset()) > len(buffer.Bytes()) {
+				buffer.Reset()
 			} else {
-				buffers = nil
+				remainingData = buffer.Bytes()[decoder.InputOffset():]
+			}
+
+			if len(remainingData) > 0 {
+				buffer.Reset()
+				buffer.Write(remainingData)
+			} else {
+				buffer.Reset()
 			}
 		}
 	}
 }
 
-// reads from the writeChan and writes the message to thSe gateway
 // has a retry mechanism with a delay of 2 seconds
 // after 3 retries, give up and go home
 func (v *VoiceSession) handleWrite() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	defer close(v.writeChan)
 
 	retryCount := 0
@@ -239,7 +347,17 @@ func (v *VoiceSession) handleWrite() {
 
 	for data := range v.writeChan {
 		for {
-			if _, err := v.Conn.Write(data); err != nil {
+			var msg json.RawMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				v.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
+				break
+			}
+
+			if err := wsjson.Write(ctx, v.Conn, msg); err != nil {
+				if strings.Contains(err.Error(), ErrConnClosed.Error()) {
+					fmt.Println("voice conn closed, returning from handleWrite")
+					return
+				}
 				if retryCount < maxRetries {
 					retryCount++
 					log.Printf("write error: %v, retrying %d/%d", err, retryCount, maxRetries)
@@ -267,7 +385,7 @@ func (v *VoiceSession) handleError() {
 	defer close(v.errorChan)
 
 	for err := range v.errorChan {
-		log.Printf("error: %v\n", err)
+		log.Printf("voice error: %v\n", err)
 	}
 }
 
@@ -345,6 +463,12 @@ func (v *VoiceSession) SetChannelID(channelID structs.Snowflake) {
 	v.ChannelID = &channelID
 }
 
+func (v *VoiceSession) ClearChannelID() {
+	v.Mu.Lock()
+	defer v.Mu.Unlock()
+	v.ChannelID = nil
+}
+
 func (v *VoiceSession) SetResumeURL(resumeURL string) {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
@@ -357,7 +481,7 @@ func (v *VoiceSession) SetConnected(connected bool) {
 	v.Connected = connected
 }
 
-func (v *VoiceSession) SetBotData(botData *structs.Bot) {
+func (v *VoiceSession) SetBotData(botData *structs.BotData) {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
 	v.BotData = botData
@@ -429,7 +553,7 @@ func (v *VoiceSession) GetConnected() bool {
 	return v.Connected
 }
 
-func (v *VoiceSession) GetBotData() *structs.Bot {
+func (v *VoiceSession) GetBotData() *structs.BotData {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
 	return v.BotData
@@ -439,4 +563,22 @@ func (v *VoiceSession) GetUdpConn() *voice.UdpData {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
 	return v.UdpConn
+}
+
+func (v *VoiceSession) IsConnectReady() bool {
+	v.Mu.Lock()
+	defer v.Mu.Unlock()
+	return v.isConnectReady
+}
+
+func (v *VoiceSession) SetConnectReady(ready bool) {
+	v.Mu.Lock()
+	defer v.Mu.Unlock()
+	v.isConnectReady = ready
+
+	if v.isConnectReady && !v.Connected {
+		v.once.Do(func() {
+			close(v.connectReady)
+		})
+	}
 }
