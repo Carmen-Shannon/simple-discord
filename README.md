@@ -60,6 +60,14 @@ Setting up custom interaction handlers (for slash commands):
 - with auto-sharding, you can use the *session.Session argument to access the shard receiving the event
 - gateway.Payload is used to assert the event is an `Interaction Create Event` from the discord gateway. I haven't implemented a way to make this boilerplate code default behavior yet, but will do that eventually
 ```go
+import (
+    "github.com/Carmen-Shannon/simple-discord/bot"
+    "github.com/Carmen-Shannon/simple-discord/session"
+    "github.com/Carmen-Shannon/simple-discord/structs"
+    "github.com/Carmen-Shannon/simple-discord/structs/gateway"
+    receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
+)
+
 func main() {
     ...
     // set up a new handler function with the proper arguments and error response
@@ -103,6 +111,13 @@ Registering commands with the Discord API:
 - to test commands in a local server, you can register Guild commands using the Application ID of the bot and the Guild ID of the server you are using to test
 - see dto.CreateGuildApplicationCommandDto for properties of the command
 ```go
+import(
+    requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
+    "github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+    "github.com/Carmen-Shannon/simple-discord/util"
+)
+
 func main() {
     token := "12345"
     applicationID := "12345"
