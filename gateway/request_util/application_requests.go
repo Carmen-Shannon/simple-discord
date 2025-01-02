@@ -8,7 +8,7 @@ import (
 )
 
 func GetCurrentApplication(token string) (*structs.Application, error) {
-	path := "/oauth2/applications/@me"
+	path := "/applications/@me"
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 	}
@@ -28,7 +28,7 @@ func GetCurrentApplication(token string) (*structs.Application, error) {
 }
 
 func EditCurrentApplication(updates dto.EditCurrentApplicationDto, token string) (*structs.Application, error) {
-	path := "/oauth2/applications/@me"
+	path := "/applications/@me"
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 		"Content-Type":  "application/json",
@@ -53,8 +53,8 @@ func EditCurrentApplication(updates dto.EditCurrentApplicationDto, token string)
 	return &application, nil
 }
 
-func GetApplicationRoleConnectionMetadataRecords(getDto dto.GetApplicationRoleConnectionMetadataRecordsDto, token string) ([]structs.ApplicationRoleConnectionMetadata, error) {
-	path := "/applications/" + getDto.ApplicationID.ToString() + "/role-connections/metadata"
+func GetApplicationActivityInstance(dto dto.GetApplicationActivityInstanceDto, token string) (*structs.ActivityInstance, error) {
+	path := "/applications/" + dto.ApplicationID.ToString() + "/activity-instances/" + dto.InstanceID
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 	}
@@ -64,16 +64,11 @@ func GetApplicationRoleConnectionMetadataRecords(getDto dto.GetApplicationRoleCo
 		return nil, err
 	}
 
-	var records []structs.ApplicationRoleConnectionMetadata
-	err = json.Unmarshal(resp, &records)
+	var activityInstance structs.ActivityInstance
+	err = json.Unmarshal(resp, &activityInstance)
 	if err != nil {
 		return nil, err
 	}
 
-	return records, nil
-}
-
-// THIS IS NOT IMPLEMENTED YET, NO DETAILS IN DOCUMENTATION FOR HOW TO SEND THE PUT REQUEST
-func UpdateApplicationRoleConnectionMetadataRecords(token string) ([]structs.ApplicationRoleConnectionMetadata, error) {
-	return nil, nil
+	return &activityInstance, nil
 }

@@ -188,3 +188,8 @@ const (
 	AutoVideoQualityMode VideoQualityMode = 1
 	FullVideoQualityMode VideoQualityMode = 2
 )
+
+type FollowedChannel struct {
+	ChannelID Snowflake `json:"channel_id"`
+	WebhookID Snowflake `json:"webhook_id"`
+}

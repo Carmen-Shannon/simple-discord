@@ -362,7 +362,7 @@ type ChannelMention struct {
 
 type Attachment struct {
 	ID              Snowflake                 `json:"id"`
-	FileName        string                    `json:"file_name"`
+	FileName        string                    `json:"filename"`
 	Title           *string                   `json:"title,omitempty"`
 	Description     *string                   `json:"description,omitempty"`
 	ContentType     *string                   `json:"content_type,omitempty"`
@@ -372,7 +372,7 @@ type Attachment struct {
 	Height          *int                      `json:"height,omitempty"`
 	Width           *int                      `json:"width,omitempty"`
 	Ephemeral       *bool                     `json:"ephemeral,omitempty"`
-	DurationSeconds *float64                  `json:"duration_seconds,omitempty"`
+	DurationSeconds *float64                  `json:"duration_secs,omitempty"`
 	Waveform        *string                   `json:"waveform,omitempty"`
 	Flags           *Bitfield[AttachmentFlag] `json:"flags,omitempty"`
 }

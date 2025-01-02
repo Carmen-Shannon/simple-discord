@@ -16,6 +16,7 @@ type Invite struct {
 	ExpiresAt                *time.Time           `json:"expires_at,omitempty"`
 	StageInstance            *InviteStageInstance `json:"stage_instance,omitempty"`
 	GuildScheduledEvent      *GuildScheduledEvent `json:"guild_scheduled_event,omitempty"`
+	InviteMetaData
 }
 
 type InviteType int
@@ -39,4 +40,12 @@ type InviteStageInstance struct {
 	ParticipantCount int           `json:"participant_count"`
 	SpeakerCount     int           `json:"speaker_count"`
 	Topic            string        `json:"topic"`
+}
+
+type InviteMetaData struct {
+	Uses      *int       `json:"uses,omitempty"`
+	MaxUses   *int       `json:"max_uses,omitempty"`
+	MaxAge    *int       `json:"max_age,omitempty"`
+	Temporary *bool      `json:"temporary,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 }

@@ -16,15 +16,15 @@ const (
 type ActivityFlag int64
 
 const (
-	ActivityInstance            ActivityFlag = 1 << 0
-	ActivityJoin                ActivityFlag = 1 << 1
-	ActivitySpectate            ActivityFlag = 1 << 2
-	ActivityJoinRequest         ActivityFlag = 1 << 3
-	ActivitySync                ActivityFlag = 1 << 4
-	ActivityPlay                ActivityFlag = 1 << 5
-	ActivityPartyPrivacyFriends ActivityFlag = 1 << 6
-	ActivityPartyPrivacyVoice   ActivityFlag = 1 << 7
-	ActivityEmbedded            ActivityFlag = 1 << 8
+	ActivityFlagInstance            ActivityFlag = 1 << 0
+	ActivityFlagJoin                ActivityFlag = 1 << 1
+	ActivityFlagSpectate            ActivityFlag = 1 << 2
+	ActivityFlagJoinRequest         ActivityFlag = 1 << 3
+	ActivityFlagSync                ActivityFlag = 1 << 4
+	ActivityFlagPlay                ActivityFlag = 1 << 5
+	ActivityFlagPartyPrivacyFriends ActivityFlag = 1 << 6
+	ActivityFlagPartyPrivacyVoice   ActivityFlag = 1 << 7
+	ActivityFlagEmbedded            ActivityFlag = 1 << 8
 )
 
 type Activity struct {
@@ -73,6 +73,28 @@ type ActivitySecrets struct {
 	Spectate *string `json:"spectate"`
 	Match    *string `json:"match"`
 }
+
+type ActivityInstance struct {
+	ApplicationID Snowflake        `json:"application_id"`
+	InstanceID    string           `json:"instance_id"`
+	LaunchID      Snowflake        `json:"launch_id"`
+	Location      ActivityLocation `json:"location"`
+	Users         []Snowflake      `json:"users"`
+}
+
+type ActivityLocation struct {
+	ID        string               `json:"id"`
+	Kind      ActivityLocationKind `json:"kind"`
+	ChannelID Snowflake            `json:"channel_id"`
+	GuildID   *Snowflake           `json:"guild_id,omitempty"`
+}
+
+type ActivityLocationKind string
+
+const (
+	ActivityLocationKindGC ActivityLocationKind = "gc" // guild channel, or public channel
+	ActivityLocationKindPC ActivityLocationKind = "pc" // private channel or DM or group DM
+)
 
 type Button struct {
 	Label        string  `json:"label"`

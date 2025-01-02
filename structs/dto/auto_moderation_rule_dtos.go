@@ -8,7 +8,7 @@ type GetAutoModerationRuleDto struct {
 }
 
 type CreateAutoModerationRuleDto struct {
-	GuildID         structs.Snowflake                      `json:"guild_id"`
+	GuildID         structs.Snowflake                      `json:"-"`
 	Name            string                                 `json:"name"`
 	EventType       structs.AutoModerationEventType        `json:"event_type"`
 	TriggerType     structs.AutoModerationTriggerType      `json:"trigger_type"`
@@ -20,8 +20,8 @@ type CreateAutoModerationRuleDto struct {
 }
 
 type ModifyAutoModerationRuleDto struct {
-	GuildID         structs.Snowflake                      `json:"guild_id"`
-	RuleID          structs.Snowflake                      `json:"rule_id"`
+	GuildID         structs.Snowflake                      `json:"-"`
+	RuleID          structs.Snowflake                      `json:"-"`
 	Name            *string                                `json:"name,omitempty"`
 	EventType       *structs.AutoModerationEventType       `json:"event_type,omitempty"`
 	TriggerMetaData *structs.AutoModerationTriggerMetadata `json:"trigger_metadata,omitempty"`

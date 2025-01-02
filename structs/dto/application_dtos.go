@@ -18,3 +18,13 @@ type EditCurrentApplicationDto struct {
 type GetApplicationRoleConnectionMetadataRecordsDto struct {
 	ApplicationID structs.Snowflake `json:"application_id"`
 }
+
+type GetApplicationActivityInstanceDto struct {
+	ApplicationID structs.Snowflake `json:"application_id"`
+	InstanceID    string            `json:"instance_id"`
+}
+
+type UpdateApplicationRoleConnectionMetadataRecordsDto struct {
+	ApplicationID structs.Snowflake                           `json:"application_id"`
+	Records       []structs.ApplicationRoleConnectionMetadata `json:"records"`
+}
