@@ -27,12 +27,6 @@ type bot struct {
 var _ Bot = (*bot)(nil)
 
 // NewBot creates a new auto-sharded bot with the given token and intents.
-//
-// Auto-sharding happens locally, the Discord API will provide a recommended number of shards based on how many guilds the bot is in.
-// Each shard will be attached to a session, and only that session will respond to that particular shard's events.
-// For massive bots in many guilds, you might require more CPU to handle the load
-
-// NewBot creates a new auto-sharded bot with the given token and intents.
 // Auto-sharding happens locally, and the Discord API will provide a recommended number of shards
 // based on how many guilds the bot is in. Each shard will be attached to a session, and only that
 // session will respond to that particular shard's events. For massive bots in many guilds, you might
@@ -180,6 +174,7 @@ func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) *session.Session {
 // Use this to handle interaction events, or slash commands.
 // The commands map should be in the following format:
 //   - map[string]session.CommandFunc
+//
 // The key is the name of the command, and the value is the function that will be called when the command is triggered.
 //
 // Parameters:
@@ -217,6 +212,7 @@ func (b *bot) RegisterCommands(commands map[string]session.CommandFunc) {
 // Use this to handle events such as message creation, message deletion, etc...
 // The listeners map should be in the following format:
 //   - map[session.Listener]session.CommandFunc
+//
 // The key is the listener you want to listen for, and the value is the function that will be called when the listener is triggered.
 //
 // Parameters:
