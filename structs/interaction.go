@@ -1,13 +1,15 @@
 package structs
 
-import "errors"
+import (
+	"errors"
+)
 
 type ResolvedData struct {
-	Users       *map[Snowflake]User        `json:"users,omitempty"`
-	Members     *map[Snowflake]GuildMember `json:"members,omitempty"`
-	Roles       *map[Snowflake]Role        `json:"roles,omitempty"`
-	Channels    *map[Snowflake]Channel     `json:"channels,omitempty"`
-	Attachments *map[Snowflake]Attachment  `json:"attachments,omitempty"`
+	Users       map[Snowflake]User        `json:"users,omitempty"`
+	Members     map[Snowflake]GuildMember `json:"members,omitempty"`
+	Roles       map[Snowflake]Role        `json:"roles,omitempty"`
+	Channels    map[Snowflake]Channel     `json:"channels,omitempty"`
+	Attachments map[Snowflake]Attachment  `json:"attachments,omitempty"`
 }
 
 type InteractionData struct {

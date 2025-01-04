@@ -84,6 +84,10 @@ type MessageType struct {
 	Deletable bool   `json:"deletable"`
 }
 
+func NewMessageType(value int) *MessageType {
+	return GetMessageType(value)
+}
+
 func (m *MessageType) UnmarshalJSON(data []byte) error {
 	var messageType int
 	if err := json.Unmarshal(data, &messageType); err != nil {
@@ -196,7 +200,7 @@ type MessageReference struct {
 }
 
 type MessageSnapshot struct {
-	Message *Message `json:"message"`
+	Message *Message `json:"message,omitempty"`
 }
 
 type MessageInteractionMetadata struct {
@@ -244,12 +248,12 @@ type Message struct {
 	EditedTimestamp      *time.Time                  `json:"edited_timestamp,omitempty"`
 	TTS                  bool                        `json:"tts"`
 	MentionEveryone      bool                        `json:"mention_everyone"`
-	Mentions             []User                      `json:"mentions"`
-	MentionRoles         []Role                      `json:"mention_roles"`
-	MentionChannels      []ChannelMention            `json:"mention_channels"`
-	Attachments          []Attachment                `json:"attachments"`
-	Embeds               []Embed                     `json:"embeds"`
-	Reactions            []Reaction                  `json:"reactions"`
+	Mentions             []User                      `json:"mentions,omitempty"`
+	MentionRoles         []Role                      `json:"mention_roles,omitempty"`
+	MentionChannels      []ChannelMention            `json:"mention_channels,omitempty"`
+	Attachments          []Attachment                `json:"attachments,omitempty"`
+	Embeds               []Embed                     `json:"embeds,omitempty"`
+	Reactions            []Reaction                  `json:"reactions,omitempty"`
 	Nonce                *string                     `json:"nonce,omitempty"`
 	Pinned               bool                        `json:"pinned"`
 	WebhookID            *Snowflake                  `json:"webhook_id,omitempty"`
@@ -257,16 +261,16 @@ type Message struct {
 	Activity             *MessageActivity            `json:"activity,omitempty"`
 	Application          *Application                `json:"application,omitempty"`
 	ApplicationID        *Snowflake                  `json:"application_id,omitempty"`
-	Flags                Bitfield[MessageFlag]       `json:"flags,omitempty"`
+	Flags                *Bitfield[MessageFlag]      `json:"flags,omitempty"`
 	MessageReference     *MessageReference           `json:"message_reference,omitempty"`
-	MessageSnapshots     []MessageSnapshot           `json:"message_snapshots"`
+	MessageSnapshots     []MessageSnapshot           `json:"message_snapshots,omitempty"`
 	ReferencedMessage    *Message                    `json:"referenced_message,omitempty"`
 	InteractionMetadata  *MessageInteractionMetadata `json:"interaction_metadata,omitempty"`
 	Interaction          *MessageInteraction         `json:"interaction,omitempty"`
 	Thread               *Channel                    `json:"thread,omitempty"`
-	Components           []MessageComponent          `json:"components"`
-	StickerItems         []StickerItem               `json:"sticker_items"`
-	Stickers             []Sticker                   `json:"stickers"` //DEPRECATED: remove in the future
+	Components           []MessageComponent          `json:"components,omitempty"`
+	StickerItems         []StickerItem               `json:"sticker_items,omitempty"`
+	Stickers             []Sticker                   `json:"stickers,omitempty"` //DEPRECATED: remove in the future
 	Position             *int                        `json:"position,omitempty"`
 	RoleSubscriptionData *RoleSubscriptionData       `json:"role_subscription_data,omitempty"`
 	Resolved             *ResolvedData               `json:"resolved,omitempty"`

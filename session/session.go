@@ -183,6 +183,13 @@ func (s *Session) Exit() error {
 	if s.stopHeartbeat != nil {
 		close(s.stopHeartbeat)
 	}
+
+	// Close the voice connection if there is one still active
+	if s.GetVoiceSession() != nil && s.GetVoiceSession().GetConnected() {
+		if err := s.GetVoiceSession().Exit(); err != nil {
+			return err
+		}
+	}
 	// Close the connection
 	if err := s.Conn.Close(websocket.StatusNormalClosure, "disconnect"); err != nil {
 		return fmt.Errorf("error closing connection: %v", err)
@@ -229,11 +236,11 @@ func (s *Session) Write(data []byte) {
 	}
 }
 
-func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+func (s *Session) SendMessage(messageOptions dto.MessageOptions) error {
 	done := make(chan error)
 
 	go func() {
-		err := s.sendReply(interactionOptions, interaction)
+		_, err := s.sendMessage(messageOptions)
 		if err != nil {
 			done <- err
 			return
@@ -246,7 +253,40 @@ func (s *Session) Reply(interactionOptions structs.InteractionResponseOptions, i
 	return <-done
 }
 
-func (s *Session) sendReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+func (s *Session) sendMessage(messageOptions dto.MessageOptions) (*structs.Message, error) {
+	token := *s.GetToken()
+	reqDto, err := messageOptions.ConstructDtoFromOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	message, err := requestutil.CreateMessage(*reqDto, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
+// InteractionReply is used to reply to interaction create events, this must be called within 3 seconds of receiving the event
+func (s *Session) InteractionReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+	done := make(chan error)
+
+	go func() {
+		err := s.sendInteractionReply(interactionOptions, interaction)
+		if err != nil {
+			done <- err
+			return
+		}
+
+		done <- nil
+	}()
+
+	// Wait for the goroutine to finish
+	return <-done
+}
+
+func (s *Session) sendInteractionReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
 	interactionID := interaction.ID.ToString()
 	interactionToken := interaction.Token
 	token := *s.GetToken()
@@ -273,6 +313,18 @@ func (s *Session) RegisterCommands(commands map[string]CommandFunc) {
 	defer s.Mu.Unlock()
 	for name, command := range commands {
 		s.EventHandler.AddCustomHandler(name, command)
+	}
+}
+
+// RegisterListeners adds custom listeners to the EventHandler
+//
+// This would be used to interact with gateway events from Discord, like MESSAGE_CREATE
+// The list of events you can listen to are defined in the Listener enum
+func (s *Session) RegisterListeners(listeners map[Listener]CommandFunc) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+	for listener, command := range listeners {
+		s.EventHandler.AddListener(string(listener), command)
 	}
 }
 
@@ -389,9 +441,11 @@ func (s *Session) handleError() {
 func (s *Session) ResumeSession() error {
 	close(s.stopHeartbeat)
 
-	err := s.Voice.ResumeSession()
-	if err != nil {
-		return err
+	if s.Voice.GetConnected() {
+		err := s.Voice.ResumeSession()
+		if err != nil {
+			return err
+		}
 	}
 
 	// open a new connection using the cached url

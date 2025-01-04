@@ -24,15 +24,62 @@ type VoiceEventFunc func(*VoiceSession, voice.VoicePayload) error
 type BinaryVoiceEventFunc func(*VoiceSession, voice.BinaryVoicePayload) error
 
 type EventHandler struct {
-	NamedHandlers  map[string]EventFunc
-	OpCodeHandlers map[gateway.GatewayOpCode]EventFunc
-	CustomHandlers map[string]EventFunc
+	NamedHandlers    map[string]EventFunc
+	OpCodeHandlers   map[gateway.GatewayOpCode]EventFunc
+	CustomHandlers   map[string]EventFunc
+	ListenerHandlers map[string]EventFunc
 }
 
 type VoiceEventHandler struct {
 	OpCodeHandlers map[voice.VoiceOpCode]VoiceEventFunc
 	BinaryHandlers map[voice.VoiceOpCode]BinaryVoiceEventFunc
 }
+
+type Listener string
+
+const (
+	HelloListener                      Listener = "HELLO"
+	ReadyListener                      Listener = "READY"
+	ResumedListener                    Listener = "RESUMED"
+	ReconnectListener                  Listener = "RECONNECT"
+	InvalidSessionListener             Listener = "INVALID_SESSION"
+	ChannelCreateListener              Listener = "CHANNEL_CREATE"
+	ChannelUpdateListener              Listener = "CHANNEL_UPDATE"
+	ChannelDeleteListener              Listener = "CHANNEL_DELETE"
+	GuildCreateListener                Listener = "GUILD_CREATE"
+	GuildUpdateListener                Listener = "GUILD_UPDATE"
+	GuildDeleteListener                Listener = "GUILD_DELETE"
+	GuildBanAddListener                Listener = "GUILD_BAN_ADD"
+	GuildBanRemoveListener             Listener = "GUILD_BAN_REMOVE"
+	GuildEmojisUpdateListener          Listener = "GUILD_EMOJIS_UPDATE"
+	GuildIntegrationsUpdateListener    Listener = "GUILD_INTEGRATIONS_UPDATE"
+	GuildAuditLogEntryCreateListener   Listener = "GUILD_AUDIT_LOG_ENTRY_CREATE"
+	GuildMemberAddListener             Listener = "GUILD_MEMBER_ADD"
+	GuildMemberRemoveListener          Listener = "GUILD_MEMBER_REMOVE"
+	GuildMemberUpdateListener          Listener = "GUILD_MEMBER_UPDATE"
+	GuildMembersChunkListener          Listener = "GUILD_MEMBERS_CHUNK"
+	GuildRoleCreateListener            Listener = "GUILD_ROLE_CREATE"
+	GuildRoleUpdateListener            Listener = "GUILD_ROLE_UPDATE"
+	GuildRoleDeleteListener            Listener = "GUILD_ROLE_DELETE"
+	MessageCreateListener              Listener = "MESSAGE_CREATE"
+	MessageUpdateListener              Listener = "MESSAGE_UPDATE"
+	MessageDeleteListener              Listener = "MESSAGE_DELETE"
+	MessageBulkDeleteListener          Listener = "MESSAGE_BULK_DELETE"
+	MessageReactionAddListener         Listener = "MESSAGE_REACTION_ADD"
+	MessageReactionRemoveListener      Listener = "MESSAGE_REACTION_REMOVE"
+	MessageReactionRemoveAllListener   Listener = "MESSAGE_REACTION_REMOVE_ALL"
+	MessageReactionRemoveEmojiListener Listener = "MESSAGE_REACTION_REMOVE_EMOJI"
+	MessagePollVoteAddListener         Listener = "MESSAGE_POLL_VOTE_ADD"
+	MessagePollVoteRemoveListener      Listener = "MESSAGE_POLL_VOTE_REMOVE"
+	TypingStartListener                Listener = "TYPING_START"
+	UserUpdateListener                 Listener = "USER_UPDATE"
+	VoiceChannelEffectSendListener     Listener = "VOICE_CHANNEL_EFFECT_SEND"
+	VoiceStateUpdateListener           Listener = "VOICE_STATE_UPDATE"
+	VoiceServerUpdateListener          Listener = "VOICE_SERVER_UPDATE"
+	VoiceChannelStatusUpdateListener   Listener = "VOICE_CHANNEL_STATUS_UPDATE"
+	WebhooksUpdateListener             Listener = "WEBHOOKS_UPDATE"
+	PresenceUpdateListener             Listener = "PRESENCE_UPDATE"
+)
 
 // sets up a new EventHandler with the default Discord handlers
 func NewEventHandler() *EventHandler {
@@ -48,7 +95,8 @@ func NewEventHandler() *EventHandler {
 			gateway.Hello:               handleHelloEvent,
 			gateway.HeartbeatACK:        handleHeartbeatACKEvent,
 		},
-		CustomHandlers: map[string]EventFunc{},
+		CustomHandlers:   map[string]EventFunc{},
+		ListenerHandlers: map[string]EventFunc{},
 	}
 
 	e.NamedHandlers = map[string]EventFunc{
@@ -243,6 +291,13 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 			if err := handler(s, payload); err != nil {
 				s.errorChan <- err
 			}
+
+			// check if there are any listeners for this event
+			if listener, ok := e.ListenerHandlers[*payload.EventName]; ok && listener != nil {
+				if err := listener(s, payload); err != nil {
+					s.errorChan <- err
+				}
+			}
 		}()
 		return nil
 	}
@@ -251,6 +306,10 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 
 func (e *EventHandler) AddCustomHandler(name string, handler func(*Session, gateway.Payload) error) {
 	e.CustomHandlers[name] = handler
+}
+
+func (e *EventHandler) AddListener(event string, handler func(*Session, gateway.Payload) error) {
+	e.ListenerHandlers[event] = handler
 }
 
 func (e *EventHandler) handleInteractionCreateEvent(s *Session, p gateway.Payload) error {

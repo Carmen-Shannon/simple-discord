@@ -1,8 +1,11 @@
 package requestutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"mime/multipart"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/structs/dto"
@@ -54,24 +57,76 @@ func GetChannelMessage(idStore dto.GetChannelMessageDto, token string) (*structs
 	return &message, nil
 }
 
-func CreateChannelMessage(message dto.CreateChannelMessageDto, token string) error {
-	path := "/channels/" + message.ChannelID.ToString() + "/messages"
+func CreateMessage(reqDto dto.CreateMessageDto, token string) (*structs.Message, error) {
+	path := "/channels/" + reqDto.ChannelID.ToString() + "/messages"
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
-		"Content-Type":  "application/json",
 	}
 
-	body, err := json.Marshal(message)
+	if len(reqDto.Files) > 0 {
+		var reqBody bytes.Buffer
+		writer := multipart.NewWriter(&reqBody)
+
+		payloadJson, err := json.Marshal(reqDto)
+		if err != nil {
+			return nil, err
+		}
+
+		part, err := writer.CreateFormField("payload_json")
+		if err != nil {
+			return nil, err
+		}
+		part.Write(payloadJson)
+
+		for key, fileContent := range reqDto.Files {
+			attachmentID := key
+			for _, attachment := range reqDto.Attachments {
+				if attachment.ID.ToString() == attachmentID {
+					part, err := writer.CreateFormFile(fmt.Sprintf("files[%s]", attachmentID), attachment.FileName)
+					if err != nil {
+						return nil, err
+					}
+					part.Write(fileContent)
+					break
+				}
+			}
+		}
+
+		writer.Close()
+
+		headers["Content-Type"] = writer.FormDataContentType()
+		resp, err := HttpRequest("POST", path, headers, reqBody.Bytes())
+		if err != nil {
+			return nil, err
+		}
+
+		var message structs.Message
+		err = json.Unmarshal(resp, &message)
+		if err != nil {
+			return nil, err
+		}
+
+		return &message, nil
+	}
+
+	body, err := json.Marshal(reqDto)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = HttpRequest("POST", path, headers, body)
+	headers["Content-Type"] = "application/json"
+	resp, err := HttpRequest("POST", path, headers, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var message structs.Message
+	err = json.Unmarshal(resp, &message)
+	if err != nil {
+		return nil, err
+	}
+
+	return &message, nil
 }
 
 func CrossPostChannelMessage(idStore dto.GetChannelMessageDto, token string) (*structs.Message, error) {
