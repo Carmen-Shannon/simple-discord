@@ -37,17 +37,17 @@ type VoiceIdentifyEvent struct {
 
 type VoiceSelectProtocolEvent struct {
 	Protocol string                  `json:"protocol"`
-	Data     VoiceSelectProtocalData `json:"data"`
+	Data     VoiceSelectProtocolData `json:"data"`
 }
 
-type VoiceSelectProtocalData struct {
+type VoiceSelectProtocolData struct {
 	Address string                        `json:"address"`
 	Port    int                           `json:"port"`
 	Mode    voice.TransportEncryptionMode `json:"mode"`
 }
 
 type SpeakingEvent struct {
-	*structs.SpeakingEvent
+	structs.SpeakingEvent
 }
 
 type VoiceResumeEvent struct {

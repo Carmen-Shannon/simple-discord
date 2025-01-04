@@ -1,4 +1,4 @@
-.env
+*.env
 main.go
 *.exe
 launch.json

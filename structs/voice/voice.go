@@ -38,8 +38,8 @@ const (
 type TransportEncryptionMode string
 
 const (
-	AEAD_AES256_GCM        TransportEncryptionMode = "aead_aes256_gcm_rtpsize"
-	AED_XCHACHA20_POLY1305 TransportEncryptionMode = "aead_xchacha20_poly1305_rtpsize"
+	AEAD_AES256_GCM         TransportEncryptionMode = "aead_aes256_gcm_rtpsize"
+	AEAD_XCHACHA20_POLY1305 TransportEncryptionMode = "aead_xchacha20_poly1305_rtpsize"
 )
 
 type UdpData struct {
@@ -47,6 +47,187 @@ type UdpData struct {
 	Address string                  `json:"address"`
 	Port    int                     `json:"port"`
 	Mode    TransportEncryptionMode `json:"mode"`
+}
+
+type DiscoveryPacket struct {
+	Type uint16
+	Length uint16
+	SSRC uint32
+	Address [64]byte
+	Port uint16
+}
+
+func (i *DiscoveryPacket) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	if err := binary.Write(buf, binary.BigEndian, i.Type); err != nil {
+		return nil, fmt.Errorf("failed to write type: %w", err)
+	}
+
+	if err := binary.Write(buf, binary.BigEndian, i.Length); err != nil {
+		return nil, fmt.Errorf("failed to write length: %w", err)
+	}
+
+	if err := binary.Write(buf, binary.BigEndian, i.SSRC); err != nil {
+		return nil, fmt.Errorf("failed to write SSRC: %w", err)
+	}
+
+	if _, err := buf.Write(i.Address[:]); err != nil {
+		return nil, fmt.Errorf("failed to write address: %w", err)
+	}
+
+	if err := binary.Write(buf, binary.BigEndian, i.Port); err != nil {
+		return nil, fmt.Errorf("failed to write port: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (i *DiscoveryPacket) UnmarshalBinary(data []byte) error {
+	buf := bytes.NewReader(data)
+
+	if err := binary.Read(buf, binary.BigEndian, &i.Type); err != nil {
+		return fmt.Errorf("failed to read type: %w", err)
+	}
+
+	if err := binary.Read(buf, binary.BigEndian, &i.Length); err != nil {
+		return fmt.Errorf("failed to read length: %w", err)
+	}
+
+	if err := binary.Read(buf, binary.BigEndian, &i.SSRC); err != nil {
+		return fmt.Errorf("failed to read SSRC: %w", err)
+	}
+
+	if _, err := buf.Read(i.Address[:]); err != nil {
+		return fmt.Errorf("failed to read address: %w", err)
+	}
+
+	if err := binary.Read(buf, binary.BigEndian, &i.Port); err != nil {
+		return fmt.Errorf("failed to read port: %w", err)
+	}
+
+	return nil
+}
+
+func (i *DiscoveryPacket) ToString() string {
+	// Create a map to hold the JSON representation
+	packetMap := map[string]interface{}{
+		"Type":    i.Type,
+		"Length":  i.Length,
+		"SSRC":    i.SSRC,
+		"Address": string(bytes.Trim(i.Address[:], "\x00")),
+		"Port":    i.Port,
+	}
+
+	// Marshal the map into a JSON string
+	jsonData, err := json.Marshal(packetMap)
+	if err != nil {
+		return fmt.Sprintf("error marshaling DiscoveryPacket to JSON: %v", err)
+	}
+
+	return string(jsonData)
+}
+
+type VoicePacket struct {
+	VersionFlags uint8
+	PayloadType  uint8
+	Seq          uint16
+	Timestamp    uint32
+	SSRC         uint32
+	Payload      []byte
+}
+
+func (v *VoicePacket) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	// Write VersionFlags
+	if err := binary.Write(buf, binary.BigEndian, v.VersionFlags); err != nil {
+		return nil, fmt.Errorf("failed to write version flags: %w", err)
+	}
+
+	// Write PayloadType
+	if err := binary.Write(buf, binary.BigEndian, v.PayloadType); err != nil {
+		return nil, fmt.Errorf("failed to write payload type: %w", err)
+	}
+
+	// Write Seq
+	if err := binary.Write(buf, binary.BigEndian, v.Seq); err != nil {
+		return nil, fmt.Errorf("failed to write sequence number: %w", err)
+	}
+
+	// Write Timestamp
+	if err := binary.Write(buf, binary.BigEndian, v.Timestamp); err != nil {
+		return nil, fmt.Errorf("failed to write timestamp: %w", err)
+	}
+
+	// Write SSRC
+	if err := binary.Write(buf, binary.BigEndian, v.SSRC); err != nil {
+		return nil, fmt.Errorf("failed to write SSRC: %w", err)
+	}
+
+	// Write Payload
+	if _, err := buf.Write(v.Payload); err != nil {
+		return nil, fmt.Errorf("failed to write payload: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (v *VoicePacket) UnmarshalBinary(data []byte) error {
+	buf := bytes.NewReader(data)
+
+	// Read VersionFlags
+	if err := binary.Read(buf, binary.BigEndian, &v.VersionFlags); err != nil {
+		return fmt.Errorf("failed to read version flags: %w", err)
+	}
+
+	// Read PayloadType
+	if err := binary.Read(buf, binary.BigEndian, &v.PayloadType); err != nil {
+		return fmt.Errorf("failed to read payload type: %w", err)
+	}
+
+	// Read Seq
+	if err := binary.Read(buf, binary.BigEndian, &v.Seq); err != nil {
+		return fmt.Errorf("failed to read sequence number: %w", err)
+	}
+
+	// Read Timestamp
+	if err := binary.Read(buf, binary.BigEndian, &v.Timestamp); err != nil {
+		return fmt.Errorf("failed to read timestamp: %w", err)
+	}
+
+	// Read SSRC
+	if err := binary.Read(buf, binary.BigEndian, &v.SSRC); err != nil {
+		return fmt.Errorf("failed to read SSRC: %w", err)
+	}
+
+	// Read Payload
+	v.Payload = make([]byte, buf.Len())
+	if _, err := buf.Read(v.Payload); err != nil {
+		return fmt.Errorf("failed to read payload: %w", err)
+	}
+
+	return nil
+}
+
+func (v *VoicePacket) ToString() string {
+	// Create a map to hold the JSON representation
+	packetMap := map[string]interface{}{
+		"VersionFlags": v.VersionFlags,
+		"PayloadType":  v.PayloadType,
+		"Seq":          v.Seq,
+		"Timestamp":    v.Timestamp,
+		"SSRC":         v.SSRC,
+		"Payload":      v.Payload,
+	}
+
+	// Marshal the map into a JSON string
+	jsonData, err := json.Marshal(packetMap)
+	if err != nil {
+		return fmt.Sprintf("error marshaling VoicePacket to JSON: %v", err)
+	}
+
+	return string(jsonData)
 }
 
 type VoicePayload struct {

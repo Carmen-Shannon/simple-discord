@@ -13,14 +13,14 @@ import (
 )
 
 type Bot interface {
-	GetSession(shardID int) (*session.Session, error)
-	GetSessionByGuildID(guildID structs.Snowflake) *session.Session
+	GetSession(shardID int) (session.Session, error)
+	GetSessionByGuildID(guildID structs.Snowflake) session.Session
 	RegisterCommands(commands map[string]session.CommandFunc)
 	RegisterListeners(listeners map[session.Listener]session.CommandFunc)
 }
 
 type bot struct {
-	sessions map[int]*session.Session
+	sessions map[int]session.Session
 	mu       sync.RWMutex
 }
 
@@ -55,7 +55,7 @@ func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error
 	}
 
 	b := &bot{
-		sessions: make(map[int]*session.Session),
+		sessions: make(map[int]session.Session),
 	}
 
 	shards := *initialSession.GetShards()
@@ -129,7 +129,7 @@ func (b *bot) exit() error {
 //	if err != nil {
 //	    log.Fatalf("error sending message: %v", err)
 //	}
-func (b *bot) GetSession(shardID int) (*session.Session, error) {
+func (b *bot) GetSession(shardID int) (session.Session, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -157,7 +157,7 @@ func (b *bot) GetSession(shardID int) (*session.Session, error) {
 //	if session == nil {
 //	    log.Fatalf("session not found for guild ID")
 //	}
-func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) *session.Session {
+func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) session.Session {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 

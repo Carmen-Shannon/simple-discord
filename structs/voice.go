@@ -29,7 +29,7 @@ type VoiceRegion struct {
 type SpeakingEvent struct {
 	Speaking Bitfield[SpeakingFlag] `json:"speaking"`
 	Delay    int                    `json:"delay"`
-	SSRC     int                    `json:"ssrc"`
+	SSRC     *int                   `json:"ssrc,omitempty"`
 }
 
 type SpeakingFlag int64

@@ -38,3 +38,13 @@ func UpdateFields(dst, src any) error {
 func ToPtr[T any](v T) *T {
 	return &v
 }
+
+// SliceContains checks if a slice of any type contains an element.
+func SliceContains[T comparable](s []T, e T) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}

@@ -58,12 +58,12 @@ type VoiceClientsConnectEvent struct {
 }
 
 type SpeakingEvent struct {
-	*structs.SpeakingEvent
+	structs.SpeakingEvent
 }
 
 type VoiceSessionDescriptionEvent struct {
 	Mode      voice.TransportEncryptionMode `json:"mode"`
-	SecretKey []byte                        `json:"secret_key"`
+	SecretKey [32]byte                        `json:"secret_key"`
 }
 
 type ReadyEvent struct {

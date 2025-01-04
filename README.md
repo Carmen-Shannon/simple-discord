@@ -7,6 +7,9 @@ simple-discord is designed to be a "simple" to use framework for interfacing wit
 - **Golang Performance**: Utilizes Go's performance by running the sending and receiving of data on different channels.
 - **Custom JSON Unmarshalling**: Populates an active session with easy-to-use Golang structs.
 - **Active Cache**: Maintains an active cache while the bot is running.
+    - The bot will attempt to fetch requested data from its local cache that it actively builds while it receives gateway events
+    - Each shard contains it's own cache, and the global cache of data can be accessed via the Bot instance
+    - Most of the caching is abstracted to the user, so as you develop you shouldn't notice it
 - **Auto Sharding**: Automatically takes advantage of discord sharding based on the needs of the Bot
 
 ## Installation
@@ -21,6 +24,8 @@ go get github.com/Carmen-Shannon/simple-discord@latest
 Make sure you install the simple-discord project:
 ```go get github.com/Carmen-Shannon/simple-discord@latest```
 
+## NOTE ##
+**This is old code, like from yesterday, it needs to be updated... it just wont work rn sry**
 Import the bot package into your main application, and set up a new `Bot` instance:
 ```go
 import (
@@ -145,7 +150,7 @@ This list will change as I want to add things
     - [x] Standard gateway management
     - [ ] Voice gateway management
         - [x] Voice Gateway Connection/Upkeep
-        - [ ] Voice Gateway UDP Connection/Upkeep
+        - [x] Voice Gateway UDP Connection/Upkeep
         - [ ] DAVE Voice support
 - [x] Event handler
 - [ ] Shard management

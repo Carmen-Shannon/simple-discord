@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,22 +19,6 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 	"github.com/Carmen-Shannon/simple-discord/util"
 )
-
-type EventFunc func(*Session, gateway.Payload) error
-type VoiceEventFunc func(*VoiceSession, voice.VoicePayload) error
-type BinaryVoiceEventFunc func(*VoiceSession, voice.BinaryVoicePayload) error
-
-type EventHandler struct {
-	NamedHandlers    map[string]EventFunc
-	OpCodeHandlers   map[gateway.GatewayOpCode]EventFunc
-	CustomHandlers   map[string]EventFunc
-	ListenerHandlers map[string]EventFunc
-}
-
-type VoiceEventHandler struct {
-	OpCodeHandlers map[voice.VoiceOpCode]VoiceEventFunc
-	BinaryHandlers map[voice.VoiceOpCode]BinaryVoiceEventFunc
-}
 
 type Listener string
 
@@ -80,6 +65,68 @@ const (
 	WebhooksUpdateListener             Listener = "WEBHOOKS_UPDATE"
 	PresenceUpdateListener             Listener = "PRESENCE_UPDATE"
 )
+
+// this is really just for helping me log more better, will remove eventually
+var opCodeNames = map[gateway.GatewayOpCode]string{
+	gateway.Heartbeat:           "Heartbeat",
+	gateway.Identify:            "Identify",
+	gateway.PresenceUpdate:      "PresenceUpdate",
+	gateway.VoiceStateUpdate:    "VoiceStateUpdate",
+	gateway.Resume:              "Resume",
+	gateway.RequestGuildMembers: "RequestGuildMembers",
+	gateway.Hello:               "Hello",
+	gateway.HeartbeatACK:        "HeartbeatACK",
+	gateway.Reconnect:           "Reconnect",
+}
+
+var voiceOpCodeNames = map[voice.VoiceOpCode]string{
+	voice.Identify:                    "Identify",
+	voice.SelectProtocol:              "Select Protocol",
+	voice.Ready:                       "Ready",
+	voice.Heartbeat:                   "Heartbeat",
+	voice.SessionDescription:          "Session Description",
+	voice.Speaking:                    "Speaking",
+	voice.HeartbeatAck:                "Heartbeat Ack",
+	voice.Resume:                      "Resume",
+	voice.Hello:                       "Hello",
+	voice.Resumed:                     "Resumed",
+	voice.ClientsConnect:              "Clients Connect",
+	voice.ClientDisconnect:            "Client Disconnect",
+	voice.PrepareTransition:           "DAVE Prepare Transition",
+	voice.ExecuteTransition:           "DAVE Execute Transition",
+	voice.TransitionReady:             "DAVE Transition Ready",
+	voice.PrepareEpoch:                "DAVE Prepare Epoch",
+	voice.MLSExternalSender:           "DAVE MLS External Sender",
+	voice.MLSKeyPackage:               "DAVE MLS Key Package",
+	voice.MLSProposals:                "DAVE MLS Proposals",
+	voice.MLSCommitWelcome:            "DAVE MLS Commit Welcome",
+	voice.MLSAnnounceCommitTransition: "DAVE MLS Announce Commit Transition",
+	voice.MLSWelcome:                  "DAVE MLS Welcome",
+	voice.MLSInvalidCommitWelcome:     "DAVE MLS Invalid Commit Welcome",
+}
+
+type EventFunc func(Session, gateway.Payload) error
+type VoiceEventFunc func(VoiceSession, voice.VoicePayload) error
+type BinaryVoiceEventFunc func(VoiceSession, voice.BinaryVoicePayload) error
+type UdpEventFunc func(UdpSession, voice.VoicePacket) error
+type UdpDiscoveryEventFunc func(UdpSession, voice.DiscoveryPacket) error
+
+type EventHandler struct {
+	NamedHandlers    map[string]EventFunc
+	OpCodeHandlers   map[gateway.GatewayOpCode]EventFunc
+	CustomHandlers   map[string]EventFunc
+	ListenerHandlers map[string]EventFunc
+}
+
+type VoiceEventHandler struct {
+	OpCodeHandlers map[voice.VoiceOpCode]VoiceEventFunc
+	BinaryHandlers map[voice.VoiceOpCode]BinaryVoiceEventFunc
+}
+
+type UdpEventHandler struct {
+	VoicePacketHandlers map[string]UdpEventFunc
+	DiscoveryHandlers   map[string]UdpDiscoveryEventFunc
+}
 
 // sets up a new EventHandler with the default Discord handlers
 func NewEventHandler() *EventHandler {
@@ -179,84 +226,22 @@ func NewVoiceEventHandler() *VoiceEventHandler {
 	return e
 }
 
-// this is really just for helping me log more better, will remove
-var opCodeNames = map[gateway.GatewayOpCode]string{
-	gateway.Heartbeat:           "Heartbeat",
-	gateway.Identify:            "Identify",
-	gateway.PresenceUpdate:      "PresenceUpdate",
-	gateway.VoiceStateUpdate:    "VoiceStateUpdate",
-	gateway.Resume:              "Resume",
-	gateway.RequestGuildMembers: "RequestGuildMembers",
-	gateway.Hello:               "Hello",
-	gateway.HeartbeatACK:        "HeartbeatACK",
-	gateway.Reconnect:           "Reconnect",
-}
-
-var voiceOpCodeNames = map[voice.VoiceOpCode]string{
-	voice.Identify:                    "Identify",
-	voice.SelectProtocol:              "Select Protocol",
-	voice.Ready:                       "Ready",
-	voice.Heartbeat:                   "Heartbeat",
-	voice.SessionDescription:          "Session Description",
-	voice.Speaking:                    "Speaking",
-	voice.HeartbeatAck:                "Heartbeat Ack",
-	voice.Resume:                      "Resume",
-	voice.Hello:                       "Hello",
-	voice.Resumed:                     "Resumed",
-	voice.ClientsConnect:              "Clients Connect",
-	voice.ClientDisconnect:            "Client Disconnect",
-	voice.PrepareTransition:           "DAVE Prepare Transition",
-	voice.ExecuteTransition:           "DAVE Execute Transition",
-	voice.TransitionReady:             "DAVE Transition Ready",
-	voice.PrepareEpoch:                "DAVE Prepare Epoch",
-	voice.MLSExternalSender:           "DAVE MLS External Sender",
-	voice.MLSKeyPackage:               "DAVE MLS Key Package",
-	voice.MLSProposals:                "DAVE MLS Proposals",
-	voice.MLSCommitWelcome:            "DAVE MLS Commit Welcome",
-	voice.MLSAnnounceCommitTransition: "DAVE MLS Announce Commit Transition",
-	voice.MLSWelcome:                  "DAVE MLS Welcome",
-	voice.MLSInvalidCommitWelcome:     "DAVE MLS Invalid Commit Welcome",
-}
-
-// HandleEvent handles voice events the same way as HandleEvent for normal events
-func (e *VoiceEventHandler) HandleEvent(s *VoiceSession, payload voice.VoicePayload) error {
-	fmt.Printf("HANDLING VOICE EVENT: %v, %s\n", payload.OpCode, voiceOpCodeNames[payload.OpCode])
-	if handler, ok := e.OpCodeHandlers[payload.OpCode]; ok && handler != nil {
-		if payload.Seq != nil {
-			s.SetSequence(*payload.Seq)
-		}
-		go func() {
-			if err := handler(s, payload); err != nil {
-				s.errorChan <- fmt.Errorf("error handling voice event: %v\n%s", err, payload.ToString())
-			}
-		}()
-		return nil
+func NewUdpEventHandler() *UdpEventHandler {
+	e := &UdpEventHandler{
+		VoicePacketHandlers: map[string]UdpEventFunc{},
+		DiscoveryHandlers: map[string]UdpDiscoveryEventFunc{
+			"send-discovery":    handleSendDiscoveryEvent,
+			"receive-discovery": handleReceiveDiscoveryEvent,
+		},
 	}
-	return errors.New("no handler for voice opcode")
-}
-
-func (e *VoiceEventHandler) HandleBinaryEvent(s *VoiceSession, payload voice.BinaryVoicePayload) error {
-	fmt.Println("HANDLING BINARY EVENT")
-	if handler, ok := e.BinaryHandlers[voice.VoiceOpCode(payload.OpCode)]; ok && handler != nil {
-		if payload.SequenceNumber != nil {
-			s.SetSequence(int(*payload.SequenceNumber))
-		}
-
-		go func() {
-			if err := handler(s, payload); err != nil {
-				s.errorChan <- err
-			}
-		}()
-		return nil
-	}
-	return nil
+	return e
 }
 
 // HandleEvent handles events (duh)
 // first we need to check if there is an EventName attached to the payload, so we can map it to the correct handler
 // if there is no EventName then we use the OpCode handlers
 // this function can handle sending events as well, just pass it the payload with the appropriate EventName or OpCode and let it fly
-func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
+func (e *EventHandler) HandleEvent(s Session, payload gateway.Payload) error {
 	// check first for the payload event name ("t" field in the raw payload) to see if it was omitted
 	// if it's not there run with the OpCode
 	if payload.EventName == nil {
@@ -270,7 +255,7 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 			// let her rip tater chip
 			go func() {
 				if err := handler(s, payload); err != nil {
-					s.errorChan <- err
+					s.GetSession().errorChan <- err
 				}
 			}()
 			return nil
@@ -289,13 +274,13 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 		// let her rip tater chip
 		go func() {
 			if err := handler(s, payload); err != nil {
-				s.errorChan <- err
+				s.GetSession().errorChan <- err
 			}
 
 			// check if there are any listeners for this event
 			if listener, ok := e.ListenerHandlers[*payload.EventName]; ok && listener != nil {
 				if err := listener(s, payload); err != nil {
-					s.errorChan <- err
+					s.GetSession().errorChan <- err
 				}
 			}
 		}()
@@ -304,21 +289,131 @@ func (e *EventHandler) HandleEvent(s *Session, payload gateway.Payload) error {
 	return errors.New("no handler for event name")
 }
 
-func (e *EventHandler) AddCustomHandler(name string, handler func(*Session, gateway.Payload) error) {
+func (e *EventHandler) AddCustomHandler(name string, handler func(Session, gateway.Payload) error) {
 	e.CustomHandlers[name] = handler
 }
 
-func (e *EventHandler) AddListener(event string, handler func(*Session, gateway.Payload) error) {
+func (e *EventHandler) AddListener(event string, handler func(Session, gateway.Payload) error) {
 	e.ListenerHandlers[event] = handler
 }
 
-func (e *EventHandler) handleInteractionCreateEvent(s *Session, p gateway.Payload) error {
+// HandleEvent handles voice events the same way as HandleEvent for normal events
+func (e *VoiceEventHandler) HandleEvent(s VoiceSession, payload voice.VoicePayload) error {
+	fmt.Printf("HANDLING VOICE EVENT: %v, %s\n", payload.OpCode, voiceOpCodeNames[payload.OpCode])
+	if handler, ok := e.OpCodeHandlers[payload.OpCode]; ok && handler != nil {
+		if payload.Seq != nil {
+			s.SetSequence(*payload.Seq)
+		}
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.GetSession().errorChan <- fmt.Errorf("error handling voice event: %v\n%s", err, payload.ToString())
+			}
+		}()
+		return nil
+	}
+	return errors.New("no handler for voice opcode")
+}
+
+func (e *VoiceEventHandler) HandleBinaryEvent(s VoiceSession, payload voice.BinaryVoicePayload) error {
+	fmt.Println("HANDLING BINARY EVENT")
+	if handler, ok := e.BinaryHandlers[voice.VoiceOpCode(payload.OpCode)]; ok && handler != nil {
+		if payload.SequenceNumber != nil {
+			s.SetSequence(int(*payload.SequenceNumber))
+		}
+
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.GetSession().errorChan <- err
+			}
+		}()
+		return nil
+	}
+	return nil
+}
+
+func (e *UdpEventHandler) HandleSendEvent(s UdpSession, payload voice.VoicePacket) error {
+	fmt.Println("HANDLING UDP SEND EVENT")
+	fmt.Println("UDP SEND EVENT NOT IMPLEMENTED")
+	return nil
+}
+
+func (e *UdpEventHandler) HandleReceiveEvent(s UdpSession, payload voice.VoicePacket) error {
+	fmt.Println("HANDLING UDP RECEIVE EVENT")
+	fmt.Println("UDP RECEIVE EVENT NOT IMPLEMENTED")
+	return nil
+}
+
+func (e *UdpEventHandler) HandleSendDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error {
+	fmt.Println("HANDLING DISCOVERY SEND EVENT")
+	if handler, ok := e.DiscoveryHandlers["send-discovery"]; ok && handler != nil {
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.GetSession().errorChan <- err
+			}
+		}()
+		return nil
+	} else {
+		return errors.New("no handler for discovery event")
+	}
+}
+
+func (e *UdpEventHandler) HandleReceiveDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error {
+	fmt.Println("HANDLING DISCOVERY RECEIVE EVENT")
+	if handler, ok := e.DiscoveryHandlers["receive-discovery"]; ok && handler != nil {
+		go func() {
+			if err := handler(s, payload); err != nil {
+				s.GetSession().errorChan <- err
+			}
+		}()
+		return nil
+	} else {
+		return errors.New("no handler for discovery event")
+	}
+}
+
+func handleSendDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error {
+	connData := s.GetConnData()
+	if connData == nil {
+		return errors.New("UDP connection data is not set")
+	}
+
+	var packet voice.DiscoveryPacket
+	packet.Type = 0x1
+	packet.Length = 70
+	packet.SSRC = uint32(connData.SSRC)
+	packet.Address = [64]byte{}
+
+	packetBytes, err := packet.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("failed to marshal IP discovery packet: %v", err)
+	}
+
+	// Send the IP discovery packet
+	s.Write(packetBytes)
+	return nil
+}
+
+func handleReceiveDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error {
+	// Extract the external IP and port
+	externalIP := string(bytes.Trim(payload.Address[:], "\x00"))
+	externalPort := payload.Port
+
+	s.GetConnData().Address = externalIP
+	s.GetConnData().Port = int(externalPort)
+
+	// Signal that discovery is complete
+	close(s.GetSession().discovered)
+	s.GetSession().discovered = nil
+	return nil
+}
+
+func (e *EventHandler) handleInteractionCreateEvent(s Session, p gateway.Payload) error {
 	if interactionCreateEvent, ok := p.Data.(receiveevents.InteractionCreateEvent); ok {
 		name := interactionCreateEvent.Data.Name
 		if handler, ok := e.CustomHandlers[name]; ok && handler != nil {
 			go func() {
 				if err := handler(s, p); err != nil {
-					s.errorChan <- err
+					s.GetSession().errorChan <- err
 				}
 			}()
 			return nil
@@ -328,7 +423,7 @@ func (e *EventHandler) handleInteractionCreateEvent(s *Session, p gateway.Payloa
 	return errors.New("unexpected payload data type")
 }
 
-func handleSendVoiceIdentifyEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleSendVoiceIdentifyEvent(s VoiceSession, p voice.VoicePayload) error {
 	voiceIdentifyEvent := sendevents.VoiceIdentifyEvent{
 		ServerID:  *s.GetGuildID(),
 		UserID:    s.GetBotData().UserDetails.ID,
@@ -348,27 +443,58 @@ func handleSendVoiceIdentifyEvent(s *VoiceSession, p voice.VoicePayload) error {
 	return nil
 }
 
-func handleSendVoiceSelectProtocolEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE SELECT PROTOCOL EVENT")
-	fmt.Println("VOICE SELECT PROTOCOL NOT IMPLEMENTED")
+func handleSendVoiceSelectProtocolEvent(s VoiceSession, p voice.VoicePayload) error {
+	selectProtocolEvent := sendevents.VoiceSelectProtocolEvent{
+		Protocol: "udp",
+		Data: sendevents.VoiceSelectProtocolData{
+			Address: s.GetUdpSession().GetConnData().Address,
+			Port:    s.GetUdpSession().GetConnData().Port,
+			Mode:    s.GetUdpSession().GetConnData().Mode,
+		},
+	}
+	selectProtocolPayload := voice.VoicePayload{
+		OpCode: voice.SelectProtocol,
+		Data:   selectProtocolEvent,
+		Seq:    s.GetSequence(),
+	}
+
+	data, err := json.Marshal(selectProtocolPayload)
+	if err != nil {
+		return err
+	}
+
+	s.Write(data)
 	return nil
 }
 
-func handleVoiceReadyEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceReadyEvent(s VoiceSession, p voice.VoicePayload) error {
 	if voiceReadyEvent, ok := p.Data.(receiveevents.VoiceReadyEvent); ok {
-		s.SetUdpConn(&voice.UdpData{
+		udpConn := &voice.UdpData{
 			Address: voiceReadyEvent.IP,
 			Port:    voiceReadyEvent.Port,
 			SSRC:    voiceReadyEvent.SSRC,
-			Mode:    voiceReadyEvent.Modes[0],
-		})
+		}
+		if util.SliceContains(voiceReadyEvent.Modes, voice.AEAD_AES256_GCM) {
+			udpConn.Mode = voice.AEAD_AES256_GCM
+		} else if len(voiceReadyEvent.Modes) == 1 {
+			udpConn.Mode = voiceReadyEvent.Modes[0]
+		} else {
+			udpConn.Mode = voice.AEAD_XCHACHA20_POLY1305
+		}
+
+		s.GetUdpSession().SetConnData(udpConn)
+
+		if s.GetSession().udpConnReady != nil {
+			close(s.GetSession().udpConnReady)
+			s.GetSession().udpConnReady = nil
+		}
 	} else {
 		return errors.New("unexpected payload data type")
 	}
 	return nil
 }
 
-func handleVoiceSendHeartbeatEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceSendHeartbeatEvent(s VoiceSession, p voice.VoicePayload) error {
 	if heartbeatEvent, ok := p.Data.(sendevents.VoiceHeartbeatEvent); ok {
 		if heartbeatEvent.SeqAck != nil {
 			s.SetSequence(*heartbeatEvent.SeqAck)
@@ -378,23 +504,57 @@ func handleVoiceSendHeartbeatEvent(s *VoiceSession, p voice.VoicePayload) error 
 	return errors.New("unexpected payload data type")
 }
 
-func handleVoiceSessionDescriptionEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE SESSION DESCRIPTION EVENT")
-	fmt.Println("VOICE SESSION DESCRIPTION NOT IMPLEMENTED")
+func handleVoiceSessionDescriptionEvent(s VoiceSession, p voice.VoicePayload) error {
+	if voiceSessionDescriptionEvent, ok := p.Data.(receiveevents.VoiceSessionDescriptionEvent); ok {
+		s.GetUdpSession().SetSecretKey(voiceSessionDescriptionEvent.SecretKey)
+		s.GetUdpSession().SetEncryptionMode(voiceSessionDescriptionEvent.Mode)
+
+		if s.GetUdpSession().GetSession().speakingReady != nil {
+			close(s.GetUdpSession().GetSession().speakingReady)
+			s.GetUdpSession().GetSession().speakingReady = nil
+		}
+
+		return nil
+	} else {
+		return errors.New("unexpected payload data type")
+	}
+}
+
+func handleVoiceSpeakingEvent(s VoiceSession, p voice.VoicePayload) error {
+	if p.Data == nil {
+		fmt.Println("received speaking event")
+		return nil
+	}
+
+	ssrc := s.GetUdpSession().GetConnData().SSRC
+
+	speakingEvent := sendevents.SpeakingEvent{
+		SpeakingEvent: structs.SpeakingEvent{
+			Speaking: structs.Bitfield[structs.SpeakingFlag]{structs.SpeakingFlagMicrophone},
+			Delay:    0,
+			SSRC:     &ssrc,
+		},
+	}
+	speakingPayload := voice.VoicePayload{
+		OpCode: voice.Speaking,
+		Data:   speakingEvent,
+		Seq:    s.GetSequence(),
+	}
+
+	data, err := json.Marshal(speakingPayload)
+	if err != nil {
+		return err
+	}
+
+	s.Write(data)
 	return nil
 }
 
-func handleVoiceSpeakingEvent(s *VoiceSession, p voice.VoicePayload) error {
-	fmt.Println("HANDLING VOICE SPEAKING EVENT")
-	fmt.Println("VOICE SPEAKING NOT IMPLEMENTED")
+func handleVoiceHeartbeatAckEvent(s VoiceSession, p voice.VoicePayload) error {
 	return nil
 }
 
-func handleVoiceHeartbeatAckEvent(s *VoiceSession, p voice.VoicePayload) error {
-	return nil
-}
-
-func handleSendVoiceResumeEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleSendVoiceResumeEvent(s VoiceSession, p voice.VoicePayload) error {
 	if _, ok := p.Data.(sendevents.VoiceResumeEvent); ok {
 		data, err := json.Marshal(p)
 		if err != nil {
@@ -408,12 +568,13 @@ func handleSendVoiceResumeEvent(s *VoiceSession, p voice.VoicePayload) error {
 	return nil
 }
 
-func handleVoiceHelloEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceHelloEvent(s VoiceSession, p voice.VoicePayload) error {
 	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
 		s.SetHeartbeatACK(int(helloEvent.HeartbeatInterval))
 
-		if s.heartbeatReady != nil {
-			close(s.heartbeatReady)
+		if s.GetSession().heartbeatReady != nil {
+			close(s.GetSession().heartbeatReady)
+			s.GetSession().heartbeatReady = nil
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -421,100 +582,100 @@ func handleVoiceHelloEvent(s *VoiceSession, p voice.VoicePayload) error {
 	return startVoiceHeartbeatTimer(s)
 }
 
-func handleVoiceResumedEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceResumedEvent(s VoiceSession, p voice.VoicePayload) error {
 	if _, ok := p.Data.(receiveevents.VoiceResumedEvent); ok {
-		close(s.resumeReady)
+		close(s.GetSession().resumeReady)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
 	return nil
 }
 
-func handleVoiceClientsConnectEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceClientsConnectEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE CLIENTS CONNECT EVENT")
 	fmt.Println("VOICE CLIENTS CONNECT NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceClientDisconnectEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceClientDisconnectEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE CLIENT DISCONNECT EVENT")
 	fmt.Println("VOICE CLIENT DISCONNECT NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoicePrepareTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoicePrepareTransitionEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE PREPARE TRANSITION EVENT")
 	fmt.Println("VOICE PREPARE TRANSITION NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceExecuteTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceExecuteTransitionEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE EXECUTE TRANSITION EVENT")
 	fmt.Println("VOICE EXECUTE TRANSITION NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendVoiceTransitionReadyEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleSendVoiceTransitionReadyEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE TRANSITION READY EVENT")
 	fmt.Println("VOICE TRANSITION READY NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoicePrepareEpochEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoicePrepareEpochEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE PREPARE EPOCH EVENT")
 	fmt.Println("VOICE PREPARE EPOCH NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceMLSExternalSenderEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+func handleVoiceMLSExternalSenderEvent(s VoiceSession, p voice.BinaryVoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS EXTERNAL SENDER EVENT")
 	fmt.Println("VOICE MLS EXTERNAL SENDER NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendVoiceMLSKeyPackageEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+func handleSendVoiceMLSKeyPackageEvent(s VoiceSession, p voice.BinaryVoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS KEY PACKAGE EVENT")
 	fmt.Println("VOICE MLS KEY PACKAGE NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceMLSProposalsEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+func handleVoiceMLSProposalsEvent(s VoiceSession, p voice.BinaryVoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS PROPOSALS EVENT")
 	fmt.Println("VOICE MLS PROPOSALS NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendVoiceMLSCommitWelcomeEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+func handleSendVoiceMLSCommitWelcomeEvent(s VoiceSession, p voice.BinaryVoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS COMMIT WELCOME EVENT")
 	fmt.Println("VOICE MLS COMMIT WELCOME NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceMLSAnnounceCommitTransitionEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleVoiceMLSAnnounceCommitTransitionEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS ANNOUNCE COMMIT TRANSITION EVENT")
 	fmt.Println("VOICE MLS ANNOUNCE COMMIT TRANSITION NOT IMPLEMENTED")
 	return nil
 }
 
-func handleVoiceMLSWelcomeEvent(s *VoiceSession, p voice.BinaryVoicePayload) error {
+func handleVoiceMLSWelcomeEvent(s VoiceSession, p voice.BinaryVoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS WELCOME EVENT")
 	fmt.Println("VOICE MLS WELCOME NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendVoiceMLSInvalidCommitWelcomeEvent(s *VoiceSession, p voice.VoicePayload) error {
+func handleSendVoiceMLSInvalidCommitWelcomeEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE MLS INVALID COMMIT WELCOME EVENT")
 	fmt.Println("VOICE MLS INVALID COMMIT WELCOME NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendRequestGuildMembersEvent(s *Session, p gateway.Payload) error {
+func handleSendRequestGuildMembersEvent(s Session, p gateway.Payload) error {
 	fmt.Println("HANDLING REQUEST GUILD MEMBERS EVENT")
 	fmt.Println("REQUEST GUILD MEMBERS NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
+func handleSendVoiceStateUpdateEvent(s Session, p gateway.Payload) error {
 	if s.GetVoiceSession() == nil {
 		return errors.New("voice session not initialized")
 	}
@@ -545,13 +706,13 @@ func handleSendVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleSendPresenceUpdateEvent(s *Session, p gateway.Payload) error {
+func handleSendPresenceUpdateEvent(s Session, p gateway.Payload) error {
 	fmt.Println("HANDLING PRESENCE UPDATE EVENT")
 	fmt.Println("PRESENCE UPDATE NOT IMPLEMENTED")
 	return nil
 }
 
-func handleSendResumeEvent(s *Session, p gateway.Payload) error {
+func handleSendResumeEvent(s Session, p gateway.Payload) error {
 	resumeEvent := sendevents.ResumeEvent{
 		Token:     *s.GetToken(),
 		SessionID: *s.GetID(),
@@ -571,7 +732,7 @@ func handleSendResumeEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
+func handleSendIdentifyEvent(s Session, p gateway.Payload) error {
 	identifyEvent := sendevents.IdentifyEvent{
 		Token: *s.GetToken(),
 		Properties: sendevents.IdentifyProperties{
@@ -598,7 +759,7 @@ func handleSendIdentifyEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleChannelDeleteEvent(s *Session, p gateway.Payload) error {
+func handleChannelDeleteEvent(s Session, p gateway.Payload) error {
 	if channelDeleteEvent, ok := p.Data.(receiveevents.ChannelDeleteEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[channelDeleteEvent.GuildID.ToString()]
@@ -613,7 +774,7 @@ func handleChannelDeleteEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleChannelUpdateEvent(s *Session, p gateway.Payload) error {
+func handleChannelUpdateEvent(s Session, p gateway.Payload) error {
 	if channelUpdateEvent, ok := p.Data.(receiveevents.ChannelUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[channelUpdateEvent.GuildID.ToString()]
@@ -629,7 +790,7 @@ func handleChannelUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleChannelCreateEvent(s *Session, p gateway.Payload) error {
+func handleChannelCreateEvent(s Session, p gateway.Payload) error {
 	if channelCreateEvent, ok := p.Data.(receiveevents.ChannelCreateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[channelCreateEvent.GuildID.ToString()]
@@ -646,7 +807,7 @@ func handleChannelCreateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handlePresenceUpdateEvent(s *Session, p gateway.Payload) error {
+func handlePresenceUpdateEvent(s Session, p gateway.Payload) error {
 	if presenceUpdateEvent, ok := p.Data.(receiveevents.PresenceUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[presenceUpdateEvent.GuildID.ToString()]
@@ -662,7 +823,7 @@ func handlePresenceUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
+func handleInvalidSessionEvent(s Session, p gateway.Payload) error {
 	if invalidSessionEvent, ok := p.Data.(receiveevents.InvalidSessionEvent); ok {
 		if invalidSessionEvent {
 			if err := s.ReconnectSession(); err != nil {
@@ -680,7 +841,7 @@ func handleInvalidSessionEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleReconnectEvent(s *Session, p gateway.Payload) error {
+func handleReconnectEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.ReconnectEvent); ok {
 		if err := s.ResumeSession(); err != nil {
 			return err
@@ -693,11 +854,11 @@ func handleReconnectEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleResumedEvent(s *Session, p gateway.Payload) error {
+func handleResumedEvent(s Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
+func handleGuildCreateEvent(s Session, p gateway.Payload) error {
 	if guildCreateEvent, ok := p.Data.(receiveevents.GuildCreateEvent); ok {
 		if guildCreateEvent.Unavailable != nil && !*guildCreateEvent.Unavailable {
 			server := structs.NewServer(guildCreateEvent.Guild)
@@ -719,7 +880,7 @@ func handleGuildCreateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildUpdateEvent(s *Session, p gateway.Payload) error {
+func handleGuildUpdateEvent(s Session, p gateway.Payload) error {
 	if guildUpdateEvent, ok := p.Data.(receiveevents.GuildUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildUpdateEvent.ID.ToString()]
@@ -735,7 +896,7 @@ func handleGuildUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildDeleteEvent(s *Session, p gateway.Payload) error {
+func handleGuildDeleteEvent(s Session, p gateway.Payload) error {
 	if guildDeleteEvent, ok := p.Data.(receiveevents.GuildDeleteEvent); ok {
 		servers := s.GetServers()
 		_, exists := servers[guildDeleteEvent.ID.ToString()]
@@ -754,17 +915,17 @@ func handleGuildDeleteEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildBanAddEvent(s *Session, p gateway.Payload) error {
+func handleGuildBanAddEvent(s Session, p gateway.Payload) error {
 	fmt.Println(p.ToString())
 	return nil
 }
 
-func handleGuildBanRemoveEvent(s *Session, p gateway.Payload) error {
+func handleGuildBanRemoveEvent(s Session, p gateway.Payload) error {
 	fmt.Println(p.ToString())
 	return nil
 }
 
-func handleGuildEmojisUpdateEvent(s *Session, p gateway.Payload) error {
+func handleGuildEmojisUpdateEvent(s Session, p gateway.Payload) error {
 	if guildEmojisUpdateEvent, ok := p.Data.(receiveevents.GuildEmojisUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildEmojisUpdateEvent.GuildID.ToString()]
@@ -780,14 +941,14 @@ func handleGuildEmojisUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildIntegrationsUpdateEvent(s *Session, p gateway.Payload) error {
+func handleGuildIntegrationsUpdateEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.GuildIntegrationsUpdateEvent); ok {
 		return nil
 	}
 	return errors.New("unexpected payload data type")
 }
 
-func handleGuildMemberAddEvent(s *Session, p gateway.Payload) error {
+func handleGuildMemberAddEvent(s Session, p gateway.Payload) error {
 	if guildMemberAddEvent, ok := p.Data.(receiveevents.GuildMemberAddEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildMemberAddEvent.GuildID.ToString()]
@@ -803,7 +964,7 @@ func handleGuildMemberAddEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildMemberRemoveEvent(s *Session, p gateway.Payload) error {
+func handleGuildMemberRemoveEvent(s Session, p gateway.Payload) error {
 	if guildMemberRemoveEvent, ok := p.Data.(receiveevents.GuildMemberRemoveEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildMemberRemoveEvent.GuildID.ToString()]
@@ -819,7 +980,7 @@ func handleGuildMemberRemoveEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildMemberUpdateEvent(s *Session, p gateway.Payload) error {
+func handleGuildMemberUpdateEvent(s Session, p gateway.Payload) error {
 	if guildMemberUpdateEvent, ok := p.Data.(receiveevents.GuildMemberUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildMemberUpdateEvent.GuildID.ToString()]
@@ -844,7 +1005,7 @@ func handleGuildMemberUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildMembersChunkEvent(s *Session, p gateway.Payload) error {
+func handleGuildMembersChunkEvent(s Session, p gateway.Payload) error {
 	if guildMembersChunkEvent, ok := p.Data.(receiveevents.GuildMembersChunk); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildMembersChunkEvent.GuildID.ToString()]
@@ -875,7 +1036,7 @@ func handleGuildMembersChunkEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildRoleCreateEvent(s *Session, p gateway.Payload) error {
+func handleGuildRoleCreateEvent(s Session, p gateway.Payload) error {
 	if guildRoleCreateEvent, ok := p.Data.(receiveevents.GuildRoleCreateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildRoleCreateEvent.GuildID.ToString()]
@@ -891,7 +1052,7 @@ func handleGuildRoleCreateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildRoleUpdateEvent(s *Session, p gateway.Payload) error {
+func handleGuildRoleUpdateEvent(s Session, p gateway.Payload) error {
 	if guildRoleUpdateEvent, ok := p.Data.(receiveevents.GuildRoleUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildRoleUpdateEvent.GuildID.ToString()]
@@ -907,7 +1068,7 @@ func handleGuildRoleUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildRoleDeleteEvent(s *Session, p gateway.Payload) error {
+func handleGuildRoleDeleteEvent(s Session, p gateway.Payload) error {
 	if guildRoleDeleteEvent, ok := p.Data.(receiveevents.GuildRoleDeleteEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[guildRoleDeleteEvent.GuildID.ToString()]
@@ -923,7 +1084,7 @@ func handleGuildRoleDeleteEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
+func handleMessageCreateEvent(s Session, p gateway.Payload) error {
 	if messageCreateEvent, ok := p.Data.(receiveevents.MessageCreateEvent); ok {
 		if messageCreateEvent.GuildID != nil {
 			servers := s.GetServers()
@@ -942,7 +1103,7 @@ func handleMessageCreateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
+func handleMessageUpdateEvent(s Session, p gateway.Payload) error {
 	if messageUpdateEvent, ok := p.Data.(receiveevents.MessageUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[messageUpdateEvent.GuildID.ToString()]
@@ -970,7 +1131,7 @@ func handleMessageUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageDeleteEvent(s *Session, p gateway.Payload) error {
+func handleMessageDeleteEvent(s Session, p gateway.Payload) error {
 	if messageDeleteEvent, ok := p.Data.(receiveevents.MessageDeleteEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[messageDeleteEvent.GuildID.ToString()]
@@ -985,7 +1146,7 @@ func handleMessageDeleteEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageBulkDeleteEvent(s *Session, p gateway.Payload) error {
+func handleMessageBulkDeleteEvent(s Session, p gateway.Payload) error {
 	if messageBulkDeleteEvent, ok := p.Data.(receiveevents.MessageDeleteBulkEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[messageBulkDeleteEvent.GuildID.ToString()]
@@ -1002,7 +1163,7 @@ func handleMessageBulkDeleteEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
+func handleMessageReactionAddEvent(s Session, p gateway.Payload) error {
 	if reactionAddEvent, ok := p.Data.(receiveevents.MessageReactionAddEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[reactionAddEvent.GuildID.ToString()]
@@ -1057,7 +1218,7 @@ func handleMessageReactionAddEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
+func handleMessageReactionRemoveEvent(s Session, p gateway.Payload) error {
 	if reactionRemoveEvent, ok := p.Data.(receiveevents.MessageReactionRemoveEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[reactionRemoveEvent.GuildID.ToString()]
@@ -1098,7 +1259,7 @@ func handleMessageReactionRemoveEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageReactionRemoveAllEvent(s *Session, p gateway.Payload) error {
+func handleMessageReactionRemoveAllEvent(s Session, p gateway.Payload) error {
 	if reactionRemoveAllEvent, ok := p.Data.(receiveevents.MessageReactionRemoveAllEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[reactionRemoveAllEvent.GuildID.ToString()]
@@ -1129,7 +1290,7 @@ func handleMessageReactionRemoveAllEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessageReactionRemoveEmojiEvent(s *Session, p gateway.Payload) error {
+func handleMessageReactionRemoveEmojiEvent(s Session, p gateway.Payload) error {
 	if reactionRemoveEmojiEvent, ok := p.Data.(receiveevents.MessageReactionRemoveEmojiEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[reactionRemoveEmojiEvent.GuildID.ToString()]
@@ -1160,7 +1321,7 @@ func handleMessageReactionRemoveEmojiEvent(s *Session, p gateway.Payload) error 
 	return nil
 }
 
-func handleMessagePollVoteAddEvent(s *Session, p gateway.Payload) error {
+func handleMessagePollVoteAddEvent(s Session, p gateway.Payload) error {
 	if messagePollVoteAddEvent, ok := p.Data.(receiveevents.MessagePollVoteAddEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[messagePollVoteAddEvent.GuildID.ToString()]
@@ -1199,7 +1360,7 @@ func handleMessagePollVoteAddEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleMessagePollVoteRemoveEvent(s *Session, p gateway.Payload) error {
+func handleMessagePollVoteRemoveEvent(s Session, p gateway.Payload) error {
 	if messagePollVoteRemoveEvent, ok := p.Data.(receiveevents.MessagePollVoteRemoveEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[messagePollVoteRemoveEvent.GuildID.ToString()]
@@ -1239,7 +1400,7 @@ func handleMessagePollVoteRemoveEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleTypingStartEvent(s *Session, p gateway.Payload) error {
+func handleTypingStartEvent(s Session, p gateway.Payload) error {
 	if typingStartEvent, ok := p.Data.(receiveevents.TypingStartEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[typingStartEvent.GuildID.ToString()]
@@ -1264,7 +1425,7 @@ func handleTypingStartEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleUserUpdateEvent(s *Session, p gateway.Payload) error {
+func handleUserUpdateEvent(s Session, p gateway.Payload) error {
 	if userUpdateEvent, ok := p.Data.(receiveevents.UserUpdateEvent); ok {
 		servers := s.GetServers()
 		for _, server := range servers {
@@ -1286,7 +1447,7 @@ func handleUserUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleVoiceChannelEffectSendEvent(s *Session, p gateway.Payload) error {
+func handleVoiceChannelEffectSendEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.VoiceChannelEffectSendEvent); ok {
 		fmt.Println("VOICE CHANNEL EFFECT SEND NOT IMPLEMENTED IDK WHAT TO USE IT FOR")
 	} else {
@@ -1295,7 +1456,7 @@ func handleVoiceChannelEffectSendEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
+func handleVoiceStateUpdateEvent(s Session, p gateway.Payload) error {
 	if voiceStateUpdateEvent, ok := p.Data.(receiveevents.VoiceStateUpdateEvent); ok {
 		servers := s.GetServers()
 		server, exists := servers[voiceStateUpdateEvent.GuildID.ToString()]
@@ -1308,11 +1469,12 @@ func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 
 		// yuck!!!!
 		if s.GetBotData().UserDetails.ID.Equals(voiceStateUpdateEvent.UserID) {
-			if s.GetVoiceSession() != nil {
-				s.Voice.SetSessionID(voiceStateUpdateEvent.SessionID)
-				if s.Voice.GetGuildID() != nil && s.Voice.GetToken() != nil {
-					if s.Voice.GetSessionID() != nil && !s.Voice.IsConnectReady() && !s.Voice.GetConnected() {
-						s.Voice.SetConnectReady(true)
+			vs := s.GetVoiceSession()
+			if vs != nil {
+				vs.SetSessionID(voiceStateUpdateEvent.SessionID)
+				if vs.GetGuildID() != nil && vs.GetToken() != nil {
+					if vs.GetSessionID() != nil && !vs.IsConnectReady() && !vs.GetConnected() {
+						vs.SetConnectReady(true)
 					}
 				}
 			}
@@ -1323,7 +1485,7 @@ func handleVoiceStateUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
+func handleVoiceServerUpdateEvent(s Session, p gateway.Payload) error {
 	if voiceServerUpdateEvent, ok := p.Data.(receiveevents.VoiceServerUpdateEvent); ok {
 		if s.GetVoiceSession() == nil {
 			return errors.New("voice session not initialized")
@@ -1333,13 +1495,14 @@ func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
 			*voiceServerUpdateEvent.Endpoint = "wss://" + *voiceServerUpdateEvent.Endpoint
 		}
 
+		vs := s.GetVoiceSession()
 		if voiceServerUpdateEvent.Endpoint != nil {
-			s.Voice.SetResumeURL(*voiceServerUpdateEvent.Endpoint)
+			vs.SetResumeURL(*voiceServerUpdateEvent.Endpoint)
 		}
-		s.Voice.SetGuildID(voiceServerUpdateEvent.GuildID)
-		s.Voice.SetToken(voiceServerUpdateEvent.Token)
-		if s.Voice.GetSessionID() != nil && !s.Voice.IsConnectReady() && !s.Voice.GetConnected() {
-			s.Voice.SetConnectReady(true)
+		vs.SetGuildID(voiceServerUpdateEvent.GuildID)
+		vs.SetToken(voiceServerUpdateEvent.Token)
+		if vs.GetSessionID() != nil && !vs.IsConnectReady() && !vs.GetConnected() {
+			vs.SetConnectReady(true)
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -1347,7 +1510,7 @@ func handleVoiceServerUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleWebhooksUpdateEvent(s *Session, p gateway.Payload) error {
+func handleWebhooksUpdateEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.WebhooksUpdateEvent); ok {
 		fmt.Println("WEBHOOKS UPDATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR SERVER WEBHOOK UPDATE EVENTS")
 	} else {
@@ -1356,7 +1519,7 @@ func handleWebhooksUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleGuildAuditLogEntryCreateEvent(s *Session, p gateway.Payload) error {
+func handleGuildAuditLogEntryCreateEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.GuildAuditLogEntryCreateEvent); ok {
 		fmt.Println("GUILD AUDIT LOG ENTRY CREATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR SERVER AUDIT LOG EVENTS")
 	} else {
@@ -1365,7 +1528,7 @@ func handleGuildAuditLogEntryCreateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleVoiceChannelStatusUpdateEvent(s *Session, p gateway.Payload) error {
+func handleVoiceChannelStatusUpdateEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.VoiceChannelStatusUpdateEvent); ok {
 		fmt.Println("VOICE CHANNEL STATUS UPDATE EVENT NOT IMPLEMENTED YET THIS IS USED FOR VOICE CHANNEL STATUS UPDATES ??")
 	} else {
@@ -1374,16 +1537,16 @@ func handleVoiceChannelStatusUpdateEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleHeartbeatACKEvent(s *Session, p gateway.Payload) error {
+func handleHeartbeatACKEvent(s Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleReadyEvent(s *Session, p gateway.Payload) error {
+func handleReadyEvent(s Session, p gateway.Payload) error {
 	if readyEvent, ok := p.Data.(receiveevents.ReadyEvent); ok {
 		s.SetID(&readyEvent.SessionID)
 		s.SetResumeURL(&readyEvent.ResumeGatewayURL)
 		s.SetBotData(structs.NewBotData(readyEvent.User, readyEvent.Application))
-		s.Voice.SetBotData(structs.NewBotData(readyEvent.User, readyEvent.Application))
+		s.GetVoiceSession().SetBotData(structs.NewBotData(readyEvent.User, readyEvent.Application))
 	} else {
 		return errors.New("unexpected payload data type")
 	}
@@ -1391,7 +1554,7 @@ func handleReadyEvent(s *Session, p gateway.Payload) error {
 	return nil
 }
 
-func handleHelloEvent(s *Session, p gateway.Payload) error {
+func handleHelloEvent(s Session, p gateway.Payload) error {
 	if helloEvent, ok := p.Data.(receiveevents.HelloEvent); ok {
 		heartbeatInterval := int(helloEvent.HeartbeatInterval)
 		s.SetHeartbeatACK(&heartbeatInterval)
@@ -1402,7 +1565,7 @@ func handleHelloEvent(s *Session, p gateway.Payload) error {
 	return startHeartbeatTimer(s)
 }
 
-func handleHeartbeatEvent(s *Session, p gateway.Payload) error {
+func handleHeartbeatEvent(s Session, p gateway.Payload) error {
 	if heartbeatEvent, ok := p.Data.(receiveevents.HeartbeatEvent); ok {
 		if heartbeatEvent.LastSequence != nil {
 			s.SetSequence(heartbeatEvent.LastSequence)
@@ -1412,7 +1575,7 @@ func handleHeartbeatEvent(s *Session, p gateway.Payload) error {
 	return errors.New("unexpected payload data type")
 }
 
-func sendHeartbeatEvent(s *Session) error {
+func sendHeartbeatEvent(s Session) error {
 	if s.GetConn() == nil {
 		return errors.New("connection unavailable")
 	}
@@ -1434,7 +1597,7 @@ func sendHeartbeatEvent(s *Session) error {
 	return nil
 }
 
-func heartbeatLoop(ticker *time.Ticker, s *Session) {
+func heartbeatLoop(ticker *time.Ticker, s Session) {
 	defer ticker.Stop()
 
 	firstHeartbeat := true
@@ -1451,13 +1614,13 @@ func heartbeatLoop(ticker *time.Ticker, s *Session) {
 			if err := sendHeartbeatEvent(s); err != nil {
 				return
 			}
-		case <-s.stopHeartbeat:
+		case <-s.GetSession().stopHeartbeat:
 			return
 		}
 	}
 }
 
-func startHeartbeatTimer(s *Session) error {
+func startHeartbeatTimer(s Session) error {
 	if s.GetHeartbeatACK() == nil {
 		return errors.New("no heartbeat interval set")
 	}
@@ -1467,7 +1630,7 @@ func startHeartbeatTimer(s *Session) error {
 	return nil
 }
 
-func startVoiceHeartbeatTimer(s *VoiceSession) error {
+func startVoiceHeartbeatTimer(s VoiceSession) error {
 	if s.GetHeartbeatACK() == nil {
 		return errors.New("no heartbeat interval set")
 	}
@@ -1477,7 +1640,7 @@ func startVoiceHeartbeatTimer(s *VoiceSession) error {
 	return nil
 }
 
-func voiceHeartbeatLoop(ticker *time.Ticker, s *VoiceSession) {
+func voiceHeartbeatLoop(ticker *time.Ticker, s VoiceSession) {
 	defer ticker.Stop()
 
 	for {
@@ -1486,13 +1649,13 @@ func voiceHeartbeatLoop(ticker *time.Ticker, s *VoiceSession) {
 			if err := sendVoiceHeartbeatEvent(s); err != nil {
 				return
 			}
-		case <-s.stopHeartbeat:
+		case <-s.GetSession().stopHeartbeat:
 			return
 		}
 	}
 }
 
-func sendVoiceHeartbeatEvent(s *VoiceSession) error {
+func sendVoiceHeartbeatEvent(s VoiceSession) error {
 	if s.GetConn() == nil {
 		return errors.New("connection unavailable")
 	}
