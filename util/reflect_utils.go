@@ -48,3 +48,20 @@ func SliceContains[T comparable](s []T, e T) bool {
 	}
 	return false
 }
+
+// BoolToUint8 converts a bool to a uint8.
+// If b is true, it returns 1, otherwise it returns 0.
+func BoolToUint8(b bool) uint8 {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Min returns the smaller of two integers.
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

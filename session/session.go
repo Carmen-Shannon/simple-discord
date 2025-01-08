@@ -14,11 +14,11 @@ import (
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
+	. "github.com/Carmen-Shannon/simple-discord/session/voice"
+	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/structs/dto"
 	gateway_structs "github.com/Carmen-Shannon/simple-discord/structs/gateway"
 	"github.com/Carmen-Shannon/simple-discord/util"
-
-	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -28,6 +28,7 @@ type CommandFunc func(s Session, p gateway_structs.Payload) error
 type Session interface {
 	JoinVoice(guildID, channelID structs.Snowflake) error
 	LeaveVoice(guildID structs.Snowflake) error
+	Play(filepath string) (*AudioPlayer, error)
 	Exit() error
 	NewVoiceSession()
 	Write(data []byte)
@@ -176,6 +177,12 @@ func NewSession(token string, intents []structs.Intent, shard *int) (Session, er
 	}
 
 	return &sess, nil
+}
+
+func (s *session) NewVoiceSession() {
+	vs := NewVoiceSession()
+	vs.SetBotData(s.GetBotData())
+	s.SetVoiceSession(vs)
 }
 
 // RegisterCommands adds custom commands to the EventHandler
@@ -357,7 +364,7 @@ func (s *session) JoinVoice(guildID, channelID structs.Snowflake) error {
 
 	// wait for the voice gateway to be ready, timeout after 5 seconds
 	select {
-	case <-s.GetVoiceSession().GetSession().connectReady:
+	case <-s.GetVoiceSession().GetSession().ConnectReady:
 		if err := s.GetVoiceSession().Connect(); err != nil {
 			return err
 		}
@@ -391,6 +398,23 @@ func (s *session) LeaveVoice(guildID structs.Snowflake) error {
 
 	s.NewVoiceSession()
 	return nil
+}
+
+func (s *session) Play(filepath string) (*AudioPlayer, error) {
+	if s.GetVoiceSession() == nil {
+		return nil, fmt.Errorf("voice session not initialized")
+	}
+	if !s.GetVoiceSession().GetConnected() {
+		if err := s.GetVoiceSession().Connect(); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.GetVoiceSession().GetAudioPlayer().Play(filepath); err != nil {
+		return nil, err
+	}
+
+	return util.ToPtr(s.GetVoiceSession().GetAudioPlayer()), nil
 }
 
 func (s *session) SendMessage(messageOptions dto.MessageOptions) error {

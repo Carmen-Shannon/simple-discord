@@ -4,3 +4,6 @@ main.go
 launch.json
 register_commands/*
 *.prof
+local
+
+ffmpeg/

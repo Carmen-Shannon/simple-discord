@@ -10,4 +10,7 @@ require (
 require (
 	bou.ke/monkey v1.0.2
 	github.com/coder/websocket v1.8.12
+	golang.org/x/crypto v0.31.0
 )
+
+require golang.org/x/sys v0.28.0 // indirect

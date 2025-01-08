@@ -38,6 +38,7 @@ type VoiceIdentifyEvent struct {
 type VoiceSelectProtocolEvent struct {
 	Protocol string                  `json:"protocol"`
 	Data     VoiceSelectProtocolData `json:"data"`
+	Codecs   []voice.Codec           `json:"codecs"`
 }
 
 type VoiceSelectProtocolData struct {

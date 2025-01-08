@@ -6,7 +6,7 @@ const (
 	GuildsIntent                      Intent = 1 << 0
 	GuildMembersIntent                Intent = 1 << 1
 	GuildModerationIntent             Intent = 1 << 2
-	GuildEmojisAndStickersIntens      Intent = 1 << 3
+	GuildEmojisAndStickersIntents      Intent = 1 << 3
 	GuildIntegrationsIntent           Intent = 1 << 4
 	GuildWebhooksIntent               Intent = 1 << 5
 	GuildInvitesIntent                Intent = 1 << 6
@@ -30,7 +30,7 @@ var AllIntents = []Intent{
 	GuildsIntent,
 	GuildMembersIntent,
 	GuildModerationIntent,
-	GuildEmojisAndStickersIntens,
+	GuildEmojisAndStickersIntents,
 	GuildIntegrationsIntent,
 	GuildWebhooksIntent,
 	GuildInvitesIntent,

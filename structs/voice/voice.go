@@ -2,9 +2,12 @@ package voice
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+
+	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
 type VoiceOpCode int
@@ -50,11 +53,11 @@ type UdpData struct {
 }
 
 type DiscoveryPacket struct {
-	Type uint16
-	Length uint16
-	SSRC uint32
+	Type    uint16
+	Length  uint16
+	SSRC    uint32
 	Address [64]byte
-	Port uint16
+	Port    uint16
 }
 
 func (i *DiscoveryPacket) MarshalBinary() ([]byte, error) {
@@ -128,41 +131,179 @@ func (i *DiscoveryPacket) ToString() string {
 	return string(jsonData)
 }
 
+type RTPHeader struct {
+	Version     uint8
+	Padding     bool
+	Extension   bool
+	CSRCCount   uint8
+	Marker      bool
+	PayloadType uint8
+	Seq         uint16
+	Timestamp   uint32
+	SSRC        uint32
+	CSRC        []uint32
+	ExtProfile  uint16
+	ExtLength   uint16
+	ExtData     []byte
+}
+
+func (r *RTPHeader) MarshalBinary() ([]byte, error) {
+	buf := new(bytes.Buffer)
+
+	// Combine Version, Padding, Extension, and CSRCCount into the first byte
+	firstByte := (r.Version << 6) | (util.BoolToUint8(r.Padding) << 5) | (util.BoolToUint8(r.Extension) << 4) | (r.CSRCCount & 0x0F)
+	if err := buf.WriteByte(firstByte); err != nil {
+		return nil, fmt.Errorf("failed to write first byte: %w", err)
+	}
+
+	// Combine Marker and PayloadType into the second byte
+	secondByte := (util.BoolToUint8(r.Marker) << 7) | (r.PayloadType & 0x7F)
+	if err := buf.WriteByte(secondByte); err != nil {
+		return nil, fmt.Errorf("failed to write second byte: %w", err)
+	}
+
+	// Write Seq
+	if err := binary.Write(buf, binary.BigEndian, r.Seq); err != nil {
+		return nil, fmt.Errorf("failed to write sequence number: %w", err)
+	}
+
+	// Write Timestamp
+	if err := binary.Write(buf, binary.BigEndian, r.Timestamp); err != nil {
+		return nil, fmt.Errorf("failed to write timestamp: %w", err)
+	}
+
+	// Write SSRC
+	if err := binary.Write(buf, binary.BigEndian, r.SSRC); err != nil {
+		return nil, fmt.Errorf("failed to write SSRC: %w", err)
+	}
+
+	// Write CSRC identifiers if present
+	for _, csrc := range r.CSRC {
+		if err := binary.Write(buf, binary.BigEndian, csrc); err != nil {
+			return nil, fmt.Errorf("failed to write CSRC: %w", err)
+		}
+	}
+
+	// Write extension header if Extension is true
+	if r.Extension {
+		if err := binary.Write(buf, binary.BigEndian, r.ExtProfile); err != nil {
+			return nil, fmt.Errorf("failed to write extension profile: %w", err)
+		}
+		if err := binary.Write(buf, binary.BigEndian, r.ExtLength); err != nil {
+			return nil, fmt.Errorf("failed to write extension length: %w", err)
+		}
+		if _, err := buf.Write(r.ExtData); err != nil {
+			return nil, fmt.Errorf("failed to write extension data: %w", err)
+		}
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (r *RTPHeader) UnmarshalBinary(data []byte) error {
+	if len(data) < 12 {
+		return fmt.Errorf("data too short to contain RTP header")
+	}
+
+	buf := bytes.NewReader(data)
+
+	// Read the first byte and extract Version, Padding, Extension, and CSRCCount
+	var firstByte uint8
+	if err := binary.Read(buf, binary.BigEndian, &firstByte); err != nil {
+		return fmt.Errorf("failed to read first byte: %w", err)
+	}
+	r.Version = firstByte >> 6
+	r.Padding = firstByte&0x20 != 0
+	r.Extension = firstByte&0x10 != 0
+	r.CSRCCount = firstByte & 0x0F
+
+	// Read the second byte and extract Marker and PayloadType
+	var secondByte uint8
+	if err := binary.Read(buf, binary.BigEndian, &secondByte); err != nil {
+		return fmt.Errorf("failed to read second byte: %w", err)
+	}
+	r.Marker = secondByte&0x80 != 0
+	r.PayloadType = secondByte & 0x7F
+
+	// Read Seq
+	if err := binary.Read(buf, binary.BigEndian, &r.Seq); err != nil {
+		return fmt.Errorf("failed to read sequence number: %w", err)
+	}
+
+	// Read Timestamp
+	if err := binary.Read(buf, binary.BigEndian, &r.Timestamp); err != nil {
+		return fmt.Errorf("failed to read timestamp: %w", err)
+	}
+
+	// Read SSRC
+	if err := binary.Read(buf, binary.BigEndian, &r.SSRC); err != nil {
+		return fmt.Errorf("failed to read SSRC: %w", err)
+	}
+
+	// Read CSRC identifiers if present
+	r.CSRC = make([]uint32, r.CSRCCount)
+	for i := uint8(0); i < r.CSRCCount; i++ {
+		if err := binary.Read(buf, binary.BigEndian, &r.CSRC[i]); err != nil {
+			return fmt.Errorf("failed to read CSRC: %w", err)
+		}
+	}
+
+	// Read extension header if Extension is true
+	if r.Extension {
+		if err := binary.Read(buf, binary.BigEndian, &r.ExtProfile); err != nil {
+			return fmt.Errorf("failed to read extension profile: %w", err)
+		}
+		if err := binary.Read(buf, binary.BigEndian, &r.ExtLength); err != nil {
+			return fmt.Errorf("failed to read extension length: %w", err)
+		}
+		r.ExtData = make([]byte, r.ExtLength*4)
+		if _, err := buf.Read(r.ExtData); err != nil {
+			return fmt.Errorf("failed to read extension data: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *RTPHeader) ToString() string {
+	// Create a map to hold the JSON representation
+	headerMap := map[string]interface{}{
+		"Version":     r.Version,
+		"Padding":     r.Padding,
+		"Extension":   r.Extension,
+		"CSRCCount":   r.CSRCCount,
+		"Marker":      r.Marker,
+		"PayloadType": r.PayloadType,
+		"Seq":         r.Seq,
+		"Timestamp":   r.Timestamp,
+		"SSRC":        r.SSRC,
+		"CSRC":        r.CSRC,
+	}
+
+	// Marshal the map into a JSON string
+	jsonData, err := json.Marshal(headerMap)
+	if err != nil {
+		return fmt.Sprintf("error marshaling RTPHeader to JSON: %v", err)
+	}
+
+	return string(jsonData)
+}
+
 type VoicePacket struct {
-	VersionFlags uint8
-	PayloadType  uint8
-	Seq          uint16
-	Timestamp    uint32
-	SSRC         uint32
-	Payload      []byte
+	RTPHeader
+	Payload []byte
 }
 
 func (v *VoicePacket) MarshalBinary() ([]byte, error) {
 	buf := new(bytes.Buffer)
 
-	// Write VersionFlags
-	if err := binary.Write(buf, binary.BigEndian, v.VersionFlags); err != nil {
-		return nil, fmt.Errorf("failed to write version flags: %w", err)
+	// Write RTPHeader
+	rtpHeaderBytes, err := v.RTPHeader.MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal RTP header: %w", err)
 	}
-
-	// Write PayloadType
-	if err := binary.Write(buf, binary.BigEndian, v.PayloadType); err != nil {
-		return nil, fmt.Errorf("failed to write payload type: %w", err)
-	}
-
-	// Write Seq
-	if err := binary.Write(buf, binary.BigEndian, v.Seq); err != nil {
-		return nil, fmt.Errorf("failed to write sequence number: %w", err)
-	}
-
-	// Write Timestamp
-	if err := binary.Write(buf, binary.BigEndian, v.Timestamp); err != nil {
-		return nil, fmt.Errorf("failed to write timestamp: %w", err)
-	}
-
-	// Write SSRC
-	if err := binary.Write(buf, binary.BigEndian, v.SSRC); err != nil {
-		return nil, fmt.Errorf("failed to write SSRC: %w", err)
+	if _, err := buf.Write(rtpHeaderBytes); err != nil {
+		return nil, fmt.Errorf("failed to write RTP header: %w", err)
 	}
 
 	// Write Payload
@@ -176,33 +317,16 @@ func (v *VoicePacket) MarshalBinary() ([]byte, error) {
 func (v *VoicePacket) UnmarshalBinary(data []byte) error {
 	buf := bytes.NewReader(data)
 
-	// Read VersionFlags
-	if err := binary.Read(buf, binary.BigEndian, &v.VersionFlags); err != nil {
-		return fmt.Errorf("failed to read version flags: %w", err)
+	// Read RTPHeader
+	if err := v.RTPHeader.UnmarshalBinary(data); err != nil {
+		return fmt.Errorf("failed to read RTP header: %w", err)
 	}
 
-	// Read PayloadType
-	if err := binary.Read(buf, binary.BigEndian, &v.PayloadType); err != nil {
-		return fmt.Errorf("failed to read payload type: %w", err)
-	}
+	// Calculate the length of the RTP header
+	rtpHeaderLength := 12 + int(v.RTPHeader.CSRCCount)*4
 
-	// Read Seq
-	if err := binary.Read(buf, binary.BigEndian, &v.Seq); err != nil {
-		return fmt.Errorf("failed to read sequence number: %w", err)
-	}
-
-	// Read Timestamp
-	if err := binary.Read(buf, binary.BigEndian, &v.Timestamp); err != nil {
-		return fmt.Errorf("failed to read timestamp: %w", err)
-	}
-
-	// Read SSRC
-	if err := binary.Read(buf, binary.BigEndian, &v.SSRC); err != nil {
-		return fmt.Errorf("failed to read SSRC: %w", err)
-	}
-
-	// Read Payload
-	v.Payload = make([]byte, buf.Len())
+	// Read the remaining data as Payload
+	v.Payload = make([]byte, buf.Len()-rtpHeaderLength)
 	if _, err := buf.Read(v.Payload); err != nil {
 		return fmt.Errorf("failed to read payload: %w", err)
 	}
@@ -213,12 +337,8 @@ func (v *VoicePacket) UnmarshalBinary(data []byte) error {
 func (v *VoicePacket) ToString() string {
 	// Create a map to hold the JSON representation
 	packetMap := map[string]interface{}{
-		"VersionFlags": v.VersionFlags,
-		"PayloadType":  v.PayloadType,
-		"Seq":          v.Seq,
-		"Timestamp":    v.Timestamp,
-		"SSRC":         v.SSRC,
-		"Payload":      v.Payload,
+		"RTPHeader": v.RTPHeader.ToString(),
+		"Payload":   base64.StdEncoding.EncodeToString(v.Payload),
 	}
 
 	// Marshal the map into a JSON string

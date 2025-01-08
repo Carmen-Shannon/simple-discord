@@ -1,4 +1,4 @@
-package session
+package voice
 
 import (
 	"context"
@@ -13,6 +13,8 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 )
 
+var ntpEpoch = time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC)
+
 type UdpSession interface {
 	SetConnData(udpConn *voice.UdpData)
 	GetConnData() *voice.UdpData
@@ -25,6 +27,9 @@ type UdpSession interface {
 	Write(data []byte)
 	GetEventHandler() *UdpEventHandler
 	SetEventHandler(handler *UdpEventHandler)
+	PacketSent()
+	BytesSent(bytes int)
+	ResetSentData()
 }
 
 type udpSession struct {
@@ -42,15 +47,20 @@ type udpSession struct {
 	EventHandler *UdpEventHandler
 
 	// channels
-	discovered    chan struct{}
-	speakingReady chan struct{}
-	readChan      chan []byte
-	writeChan     chan []byte
-	errorChan     chan error
+	connectionReady chan struct{}
+	discoveryReady  chan struct{}
+	speakingReady   chan struct{}
+	readChan        chan []byte
+	writeChan       chan []byte
+	errorChan       chan error
 
 	// context for managing lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// for managing the UDP packets sent
+	sentPackets int
+	sentBytes   int
 }
 
 var _ UdpSession = (*udpSession)(nil)
@@ -59,7 +69,8 @@ func NewUdpSession() UdpSession {
 	var u udpSession
 	u.Mu = &sync.Mutex{}
 	u.EventHandler = NewUdpEventHandler()
-	u.discovered = make(chan struct{})
+	u.connectionReady = make(chan struct{})
+	u.discoveryReady = make(chan struct{})
 	u.speakingReady = make(chan struct{})
 	u.readChan = make(chan []byte)
 	u.writeChan = make(chan []byte, 2048)
@@ -100,6 +111,10 @@ func (u *udpSession) Connect() error {
 		return fmt.Errorf("error discovering external IP: %v", err)
 	}
 
+	<-u.discoveryReady
+
+	// start keeping the conn alive once we discover
+	go u.keepAlive()
 	return nil
 }
 
@@ -130,10 +145,50 @@ func (u *udpSession) Write(data []byte) {
 	}
 }
 
+func (u *udpSession) keepAlive() {
+	// send a keep alive packet every 5 seconds
+	keepAlive := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-u.ctx.Done():
+			keepAlive.Stop()
+			u.ResetSentData()
+			return
+		case <-keepAlive.C:
+			if u.Conn != nil {
+				// send keep alive packet
+				senderReport := voice.SenderReportPacket{}
+				senderReport.Version = 2
+				senderReport.Padding = false
+				senderReport.ReceptionReportCount = 0
+				senderReport.PacketType = 200
+				senderReport.Length = 0
+				senderReport.SSRC = uint32(u.GetConnData().SSRC)
+				senderReport.NTPTimestamp = constructNTPTimestamp(time.Now().UTC())
+				senderReport.RTPTimestamp = constructRTPTimestamp(senderReport.NTPTimestamp)
+				senderReport.SenderPacketCount = uint32(u.sentPackets)
+				senderReport.SenderOctetCount = uint32(u.sentBytes)
+
+				packet, err := senderReport.MarshalBinary()
+				if err != nil {
+					u.errorChan <- fmt.Errorf("error marshalling keep alive packet: %v", err)
+				} else {
+					_, err := u.Conn.Write(packet)
+					if err != nil {
+						u.errorChan <- fmt.Errorf("error sending keep alive packet: %v", err)
+					}
+					fmt.Printf("packets sent: %d, bytes sent: %d\n", u.sentPackets, u.sentBytes)
+				}
+			}
+		}
+	}
+}
+
 func (u *udpSession) discover() error {
 	return u.GetEventHandler().HandleSendDiscoveryEvent(u, voice.DiscoveryPacket{})
 }
 
+// listen will listen for incoming packets and handle them accordingly
 func (u *udpSession) listen() {
 	for {
 		select {
@@ -141,19 +196,22 @@ func (u *udpSession) listen() {
 			return
 		case msg := <-u.readChan:
 			// Try to decode as DiscoveryPacket
-			discoveryPacket, err := decodeDiscoveryPacket(msg)
-			if discoveryPacket != nil && err == nil {
-				if err := u.EventHandler.HandleReceiveDiscoveryEvent(u, *discoveryPacket); err != nil {
-					u.errorChan <- fmt.Errorf("error handling received discovery packet: %v", err)
+			// only need to do this once, can ignore duplicated discovery packets
+			if u.discoveryReady != nil {
+				discoveryPacket, err := decodeDiscoveryPacket(msg)
+				if discoveryPacket != nil && err == nil {
+					if err := u.EventHandler.HandleReceiveDiscoveryEvent(u, *discoveryPacket); err != nil {
+						u.errorChan <- fmt.Errorf("error handling received discovery packet: %v", err)
+					}
+					continue
 				}
-				continue
 			}
 
 			// Try to decode as VoicePacket
 			voicePacket, err := decodeBinaryPacket(msg)
 			if voicePacket != nil && err == nil {
-				fmt.Println("HANDLING A VOICE PACKET")
-				fmt.Println(voicePacket.ToString())
+				// currently no implementation for receiving voice packets
+				// could potentially build something to record audio, but thats kind of spyware-y
 				continue
 			}
 
@@ -174,6 +232,7 @@ func (u *udpSession) handleWrite() {
 			if _, err := u.Conn.Write(data); err != nil {
 				u.errorChan <- fmt.Errorf("error writing to UDP connection: %v", err)
 			}
+			// fmt.Printf("wrote %d bytes to udp\n", len(data))
 		}
 	}
 }
@@ -191,6 +250,7 @@ func (u *udpSession) handleRead() {
 				u.errorChan <- fmt.Errorf("error reading from UDP connection: %v", err)
 				return
 			}
+			fmt.Printf("read %d bytes from udp\n", n)
 
 			// Try to decode as DiscoveryPacket
 			discoveryPacket, err := decodeDiscoveryPacket(data[:n])
@@ -271,6 +331,25 @@ func (u *udpSession) SetEventHandler(handler *UdpEventHandler) {
 	u.EventHandler = handler
 }
 
+func (u *udpSession) PacketSent() {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	u.sentPackets++
+}
+
+func (u *udpSession) BytesSent(bytes int) {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	u.sentBytes += bytes
+}
+
+func (u *udpSession) ResetSentData() {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
+	u.sentPackets = 0
+	u.sentBytes = 0
+}
+
 func decodeBinaryPacket(data []byte) (*voice.VoicePacket, error) {
 	var packet voice.VoicePacket
 	err := packet.UnmarshalBinary(data)
@@ -291,4 +370,30 @@ func decodeDiscoveryPacket(data []byte) (*voice.DiscoveryPacket, error) {
 		return nil, fmt.Errorf("error decoding discovery packet: %v", err)
 	}
 	return &packet, nil
+}
+
+func constructNTPTimestamp(t time.Time) uint64 {
+	// Calculate the number of seconds since the NTP epoch
+	seconds := uint32(t.Sub(ntpEpoch).Seconds())
+
+	// Calculate the fractional part
+	fraction := uint32((t.Sub(ntpEpoch).Nanoseconds() % 1e9) * (1 << 32) / 1e9)
+
+	// Combine the integer and fractional parts into a 64-bit unsigned fixed-point number
+	ntpTimestamp := uint64(seconds)<<32 | uint64(fraction)
+
+	return ntpTimestamp
+}
+
+func constructRTPTimestamp(ntpTimestamp uint64) uint32 {
+	// Extract the integer part of the NTP timestamp (first 32 bits)
+	ntpSeconds := uint32(ntpTimestamp >> 32)
+
+	// Extract the fractional part of the NTP timestamp (last 32 bits)
+	ntpFraction := uint32(ntpTimestamp & 0xFFFFFFFF)
+
+	// Convert the NTP timestamp to RTP timestamp using the clock rate
+	rtpTimestamp := ntpSeconds*uint32(48000) + (ntpFraction*uint32(48000))>>32
+
+	return rtpTimestamp
 }

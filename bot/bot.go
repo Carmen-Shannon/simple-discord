@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -283,12 +285,43 @@ func (b *bot) run(stopChan chan struct{}) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+	// Capture panics and close stopChan
+	go func() {
+		if r := recover(); r != nil {
+			fmt.Printf("panic occurred: %v\n", r)
+			close(stopChan)
+		}
+	}()
+
 	<-stop
 
 	if err := b.exit(); err != nil {
 		close(stopChan)
 		return err
 	}
+
+	// Cleanup temporary ffmpeg binaries
+	if err := cleanupFFmpegBinaries(); err != nil {
+		fmt.Printf("error cleaning up ffmpeg binaries: %v\n", err)
+	}
+
 	close(stopChan)
+	return nil
+}
+
+func cleanupFFmpegBinaries() error {
+	tmpDir := os.TempDir()
+	binaries := []string{"ffmpeg", "ffprobe"}
+
+	for _, binary := range binaries {
+		binaryPath := filepath.Join(tmpDir, binary)
+		if runtime.GOOS == "windows" {
+			binaryPath += ".exe"
+		}
+		if err := os.Remove(binaryPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove binary %s: %w", binaryPath, err)
+		}
+	}
+
 	return nil
 }

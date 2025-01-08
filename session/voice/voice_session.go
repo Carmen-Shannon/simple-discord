@@ -1,4 +1,4 @@
-package session
+package voice
 
 import (
 	"bytes"
@@ -40,7 +40,6 @@ type VoiceSession interface {
 	SetResumeURL(resumeURL string)
 	SetConnected(connected bool)
 	SetBotData(botData *structs.BotData)
-	SetUdpSession(udpSession UdpSession)
 	GetConn() *websocket.Conn
 	GetHeartbeatACK() *int
 	GetSequence() *int
@@ -52,10 +51,11 @@ type VoiceSession interface {
 	GetResumeURL() *string
 	GetConnected() bool
 	GetBotData() *structs.BotData
-	GetUdpSession() UdpSession
 	IsConnectReady() bool
 	SetConnectReady(ready bool)
 	GetSession() *voiceSession
+	GetAudioPlayer() AudioPlayer
+	Speaking() error
 }
 
 type voiceSession struct {
@@ -98,8 +98,8 @@ type voiceSession struct {
 	// Bot details
 	BotData *structs.BotData
 
-	// UDP Connection details
-	UdpSession UdpSession
+	// Audio player
+	AudioPlayer AudioPlayer
 
 	// checking if the voice session is ready to connect
 	isConnectReady bool
@@ -108,14 +108,12 @@ type voiceSession struct {
 	cancel context.CancelFunc
 
 	// channels
-	udpConnReady   chan struct{}
-	connectReady   chan struct{}
-	heartbeatReady chan struct{}
-	stopHeartbeat  chan struct{}
-	resumeReady    chan struct{}
-	readChan       chan []byte
-	writeChan      chan []byte
-	errorChan      chan error
+	ConnectReady  chan struct{}
+	stopHeartbeat chan struct{}
+	resumeReady   chan struct{}
+	readChan      chan []byte
+	writeChan     chan []byte
+	errorChan     chan error
 }
 
 var _ VoiceSession = (*voiceSession)(nil)
@@ -127,22 +125,15 @@ func NewVoiceSession() VoiceSession {
 	vs.EventHandler = NewVoiceEventHandler()
 	vs.Connected = false
 	vs.SetConnectReady(false)
+	vs.AudioPlayer = NewAudioPlayer()
 	vs.ctx, vs.cancel = context.WithCancel(context.Background())
-	vs.udpConnReady = make(chan struct{})
-	vs.connectReady = make(chan struct{})
-	vs.heartbeatReady = make(chan struct{})
+	vs.ConnectReady = make(chan struct{})
 	vs.stopHeartbeat = make(chan struct{})
 	vs.readChan = make(chan []byte)
 	vs.writeChan = make(chan []byte, 4096)
 	vs.errorChan = make(chan error)
 
 	return &vs
-}
-
-func (s *session) NewVoiceSession() {
-	vs := NewVoiceSession()
-	vs.SetBotData(s.GetBotData())
-	s.SetVoiceSession(vs)
 }
 
 func (v *voiceSession) Connect() error {
@@ -167,7 +158,8 @@ func (v *voiceSession) Connect() error {
 	go v.handleWrite()
 	go v.handleError()
 
-	v.SetUdpSession(NewUdpSession())
+	v.GetAudioPlayer().SetUdpSession(NewUdpSession())
+	v.GetAudioPlayer().SetVoiceSession(v)
 
 	// send identify payload
 	var identifyPayload voice.VoicePayload
@@ -176,32 +168,8 @@ func (v *voiceSession) Connect() error {
 		return err
 	}
 
-	<-v.heartbeatReady
+	<-v.GetAudioPlayer().GetUdpSession().GetSession().connectionReady
 	v.SetConnected(true)
-
-	<-v.udpConnReady
-	if err := v.GetUdpSession().Connect(); err != nil {
-		return err
-	}
-
-	<-v.GetUdpSession().GetSession().discovered
-
-	// send select protocol payload
-	var selectProtocolPayload voice.VoicePayload
-	selectProtocolPayload.OpCode = voice.SelectProtocol
-	if err := v.EventHandler.HandleEvent(v, selectProtocolPayload); err != nil {
-		return err
-	}
-
-	<-v.GetUdpSession().GetSession().speakingReady
-
-	var speakingPayload voice.VoicePayload
-	speakingPayload.OpCode = voice.Speaking
-	speakingPayload.Data = nil
-	if err := v.EventHandler.HandleEvent(v, speakingPayload); err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -214,10 +182,9 @@ func (v *voiceSession) ResumeSession() error {
 		return errors.New("voice session requires a guild ID, session ID, and token to resume")
 	}
 
+	v.AudioPlayer = NewAudioPlayer()
 	v.ctx, v.cancel = context.WithCancel(context.Background())
-	v.udpConnReady = make(chan struct{})
-	v.connectReady = make(chan struct{})
-	v.heartbeatReady = make(chan struct{})
+	v.ConnectReady = make(chan struct{})
 	v.stopHeartbeat = make(chan struct{})
 	v.readChan = make(chan []byte)
 	v.writeChan = make(chan []byte, 4096)
@@ -252,6 +219,9 @@ func (v *voiceSession) ResumeSession() error {
 	}
 
 	<-v.resumeReady
+
+	v.GetAudioPlayer().SetUdpSession(NewUdpSession())
+	v.GetAudioPlayer().SetVoiceSession(v)
 	v.SetConnected(true)
 	return nil
 }
@@ -270,6 +240,12 @@ func (v *voiceSession) Exit() error {
 		}
 	}
 
+	if v.GetAudioPlayer().IsConnected() {
+		if err := v.GetAudioPlayer().GetUdpSession().Exit(); err != nil {
+			v.errorChan <- fmt.Errorf("error closing udp session: %v", err)
+		}
+	}
+
 	v.cancel()
 	time.Sleep(1 * time.Second) //arbitrary sleep to allow for cleanup
 	close(v.readChan)
@@ -277,6 +253,17 @@ func (v *voiceSession) Exit() error {
 	close(v.errorChan)
 
 	*v = *NewVoiceSession().GetSession()
+	return nil
+}
+
+func (v *voiceSession) Speaking() error {
+	var speakingPayload voice.VoicePayload
+	speakingPayload.OpCode = voice.Speaking
+	speakingPayload.Data = nil
+
+	if err := v.EventHandler.HandleEvent(v, speakingPayload); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -571,12 +558,6 @@ func (v *voiceSession) SetBotData(botData *structs.BotData) {
 	v.BotData = botData
 }
 
-func (v *voiceSession) SetUdpSession(udpSession UdpSession) {
-	v.Mu.Lock()
-	defer v.Mu.Unlock()
-	v.UdpSession = udpSession
-}
-
 func (v *voiceSession) GetConn() *websocket.Conn {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
@@ -643,12 +624,6 @@ func (v *voiceSession) GetBotData() *structs.BotData {
 	return v.BotData
 }
 
-func (v *voiceSession) GetUdpSession() UdpSession {
-	v.Mu.Lock()
-	defer v.Mu.Unlock()
-	return v.UdpSession
-}
-
 func (v *voiceSession) IsConnectReady() bool {
 	v.Mu.Lock()
 	defer v.Mu.Unlock()
@@ -662,11 +637,15 @@ func (v *voiceSession) SetConnectReady(ready bool) {
 
 	if v.isConnectReady && !v.Connected {
 		v.once.Do(func() {
-			close(v.connectReady)
+			close(v.ConnectReady)
 		})
 	}
 }
 
 func (v *voiceSession) GetSession() *voiceSession {
 	return v
+}
+
+func (v *voiceSession) GetAudioPlayer() AudioPlayer {
+	return v.AudioPlayer
 }

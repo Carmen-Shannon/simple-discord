@@ -247,7 +247,7 @@ func NewReceiveEvent(eventData voice.VoicePayload) (any, error) {
 	default:
 		var event json.RawMessage
 		_ = json.Unmarshal(jsonData, &event)
-		return nil, fmt.Errorf("unknown opcode for voice receive event: %d\n%s", eventData.OpCode, string(event))
+		return nil, fmt.Errorf("unknown opcode for voice receive event: %d", eventData.OpCode)
 	}
 }
 
