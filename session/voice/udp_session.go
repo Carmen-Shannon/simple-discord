@@ -128,16 +128,18 @@ func (u *udpSession) Exit() error {
 	}
 
 	u.cancel()
-	time.Sleep(1 * time.Second) //arbitrary sleep to allow for cleanup
+
 	close(u.readChan)
 	close(u.writeChan)
 	close(u.errorChan)
 
-	u.Conn = nil
+	*u = *NewUdpSession().GetSession()
 	return nil
 }
 
 func (u *udpSession) Write(data []byte) {
+	u.Mu.Lock()
+	defer u.Mu.Unlock()
 	if len(u.writeChan) < cap(u.writeChan) {
 		u.writeChan <- data
 	} else {
@@ -172,10 +174,14 @@ func (u *udpSession) keepAlive() {
 				packet, err := senderReport.MarshalBinary()
 				if err != nil {
 					u.errorChan <- fmt.Errorf("error marshalling keep alive packet: %v", err)
+					keepAlive.Stop()
+					break
 				} else {
 					_, err := u.Conn.Write(packet)
 					if err != nil {
 						u.errorChan <- fmt.Errorf("error sending keep alive packet: %v", err)
+						keepAlive.Stop()
+						break
 					}
 					fmt.Printf("packets sent: %d, bytes sent: %d\n", u.sentPackets, u.sentBytes)
 				}
@@ -232,7 +238,6 @@ func (u *udpSession) handleWrite() {
 			if _, err := u.Conn.Write(data); err != nil {
 				u.errorChan <- fmt.Errorf("error writing to UDP connection: %v", err)
 			}
-			// fmt.Printf("wrote %d bytes to udp\n", len(data))
 		}
 	}
 }
@@ -246,11 +251,11 @@ func (u *udpSession) handleRead() {
 			return
 		default:
 			n, err := u.Conn.Read(data)
-			if err != nil {
+			if err != nil && !errors.Is(err, net.ErrClosed) {
+				fmt.Println(err)
 				u.errorChan <- fmt.Errorf("error reading from UDP connection: %v", err)
 				return
 			}
-			fmt.Printf("read %d bytes from udp\n", n)
 
 			// Try to decode as DiscoveryPacket
 			discoveryPacket, err := decodeDiscoveryPacket(data[:n])
@@ -393,7 +398,7 @@ func constructRTPTimestamp(ntpTimestamp uint64) uint32 {
 	ntpFraction := uint32(ntpTimestamp & 0xFFFFFFFF)
 
 	// Convert the NTP timestamp to RTP timestamp using the clock rate
-	rtpTimestamp := ntpSeconds*uint32(48000) + (ntpFraction*uint32(48000))>>32
+	rtpTimestamp := ntpSeconds*uint32(48000) + uint32((uint64(ntpFraction)*uint64(48000))>>32)
 
 	return rtpTimestamp
 }

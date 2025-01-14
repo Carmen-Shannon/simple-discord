@@ -6,4 +6,6 @@ register_commands/*
 *.prof
 local
 
-ffmpeg/
+util/ffmpeg/*
+
+!util/ffmpeg/*.go

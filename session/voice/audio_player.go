@@ -1,14 +1,8 @@
 package voice
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/binary"
 	"errors"
-	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -22,6 +16,7 @@ type AudioPlayer interface {
 	IsConnected() bool
 	GetUdpSession() UdpSession
 	SetUdpSession(session UdpSession)
+	GetVoiceSession() VoiceSession
 	SetVoiceSession(v VoiceSession)
 	Connect() error
 	Play(filepath string) error
@@ -66,17 +61,20 @@ func (a *audioPlayer) Connect() error {
 	}
 
 	<-a.session.GetSession().speakingReady
+
+	a.mu.Lock()
 	a.connected = true
+	a.mu.Unlock()
 	return nil
 }
 
 // using this method to test
 func (a *audioPlayer) Play(path string) error {
-	if a.session == nil || a.voiceSession == nil {
+	if a.GetUdpSession() == nil || a.GetVoiceSession() == nil {
 		return errors.New("sessions not initialized")
 	}
 
-	if !a.connected {
+	if !a.IsConnected() {
 		if err := a.Connect(); err != nil {
 			return err
 		}
@@ -87,34 +85,14 @@ func (a *audioPlayer) Play(path string) error {
 	}
 
 	audio := NewAudio()
-	if err := audio.RegisterFile(path); err != nil {
-		return err
-	}
-
-	// Debugging function to save audio data to a file
-	// rootDir, err := os.Getwd()
-	// if err != nil {
-	// 	return fmt.Errorf("failed to get current directory: %w", err)
-	// }
-	// savePath := filepath.Join(rootDir, "local", "test-encoded.opus")
-	// if err := saveAudioData(audio.GetData(), savePath); err != nil {
-	// 	return fmt.Errorf("failed to save audio data: %w", err)
-	// }
+	go func() {
+		if err := audio.RegisterFile(path); err != nil {
+			return
+		}
+	}()
 
 	// Stream the encoded audio
 	go a.play(audio)
-
-	return nil
-}
-
-func saveAudioData(data []byte, filename string) error {
-	if err := os.MkdirAll(filepath.Dir(filename), os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create directory: %w", err)
-	}
-
-	if err := os.WriteFile(filename, data, 0644); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
 
 	return nil
 }
@@ -126,6 +104,7 @@ func (a *audioPlayer) play(audio Audio) {
 			return
 		}
 
+		// TODO: fix this garbage with something better
 		time.Sleep(100 * time.Millisecond) // should be enough time for the speaking event to process before modifying the playing state
 
 		a.mu.Lock()
@@ -133,133 +112,29 @@ func (a *audioPlayer) play(audio Audio) {
 		a.mu.Unlock()
 	}
 
-	packetChannel := make(chan []byte, 100)
+	packetChannel := make(chan []byte)
 	done := make(chan struct{})
-
-	// Get the metadata of the audio file
-	metadata := audio.GetMetadata()
-	// set up audio stream parameters
+	sampleSize := 960 // 48khz sample rate (48000 samples/second) * 0.02 seconds (20ms frame time) = 960 samples per frame
 	frameDuration := 20 * time.Millisecond
-	frameSize := 320 // 20ms frame duration with a 128kbps bitrate means 320 bytes per frame
-
-	fmt.Println("audio data length:", metadata.DurationMs/1000)
-	fmt.Println("total bytes:", len(audio.GetData()))
-	fmt.Println("frame size:", frameSize)
-	fmt.Println("encryption mode:", string(a.GetUdpSession().GetConnData().Mode))
-	fmt.Println("address:", a.GetUdpSession().GetConnData().Address)
-	fmt.Println("port:", a.GetUdpSession().GetConnData().Port)
 
 	go func() {
-		// incrementals
-		var seq uint16
-		var timestamp uint32
-		var nonceCounter uint32
-
-		encoded := audio.GetData()
-		encryptionMode := a.GetUdpSession().GetConnData().Mode
-		secretKey := a.GetUdpSession().GetSession().SecretKey
-		ssrc := a.GetUdpSession().GetConnData().SSRC
-
-		for len(encoded) > 0 {
-			// Set up the RTP header
-			rtpHeader := voice.RTPHeader{
-				Version:     2,
-				Padding:     false,
-				Extension:   false,
-				CSRCCount:   0,
-				Marker:      false,
-				PayloadType: 120,
-				Seq:         seq,
-				Timestamp:   timestamp,
-				SSRC:        uint32(ssrc),
-				CSRC:        []uint32{},
-			}
-
-			rtpHeaderBytes, err := rtpHeader.MarshalBinary()
-			if err != nil {
-				a.session.GetSession().errorChan <- err
-				close(done)
-				return
-			}
-
-			frame := encoded[:min(len(encoded), frameSize)]
-			encryptedAudio, err := a.encryptAudio(frame, rtpHeader, encryptionMode, nonceCounter, secretKey)
-			if err != nil {
-				a.session.GetSession().errorChan <- err
-				close(done)
-				return
-			}
-
-			payload := bytes.Buffer{}
-			if _, err := payload.Write(rtpHeaderBytes); err != nil {
-				a.session.GetSession().errorChan <- err
-				close(done)
-				return
-			}
-			if _, err := payload.Write(encryptedAudio.Bytes()); err != nil {
-				a.session.GetSession().errorChan <- err
-				close(done)
-				return
-			}
-
-			// Log the packet details for debugging
-			fmt.Printf("Sending packet: Seq=%d, Timestamp=%d, Nonce=%d, PayloadSize=%d\n", seq, timestamp, nonceCounter, len(payload.Bytes()))
-
-			// Send the packet to the packetChannel
-			packetChannel <- payload.Bytes()
-
-			// Move to the next frame
-			encoded = encoded[min(len(encoded), frameSize):]
-
-			// Increment the nonce counter, sequence, and timestamp
-			nonceCounter++
-			seq++
-			timestamp += uint32(frameSize)
+		err := a.prepAudio(audio, packetChannel, sampleSize)
+		if err != nil {
+			a.session.GetSession().errorChan <- err
+			close(done)
+			return
 		}
-
-		// Send five frames of silence (0xF8, 0xFF, 0xFE)
-		silenceFrame := []byte{0xF8, 0xFF, 0xFE}
-		for i := 0; i < 5; i++ {
-			packetChannel <- silenceFrame
-		}
-
 		close(packetChannel)
 	}()
 
-	var decryptedData bytes.Buffer
-
 	go func() {
-		for {
-			select {
-			case packet, ok := <-packetChannel:
-				if !ok {
-					close(done)
-					break
-				}
-
-				// Decrypt the packet
-				decryptedAudio, err := a.decryptPayload(packet, a.GetUdpSession().GetConnData().Mode)
-				if err != nil {
-					a.session.GetSession().errorChan <- err
-					close(done)
-					return
-				}
-
-				// Write the decrypted audio data to the buffer
-				decryptedData.Write(decryptedAudio)
-
-				// Send the packet over the network
-				a.session.Write(packet)
-				// update the udp session stats
-				a.GetUdpSession().PacketSent()
-				a.GetUdpSession().BytesSent(len(packet) - 12) // packet size - the 12 byte RTP header
-
-				// Wait for the frame duration
-				time.Sleep(frameDuration)
-			case <-done:
-				return
-			}
+		err := a.sendAudio(frameDuration, packetChannel)
+		if err != nil {
+			a.session.GetSession().errorChan <- err
+			close(done)
+			return
 		}
+		close(done)
 	}()
 
 	<-done
@@ -271,33 +146,116 @@ func (a *audioPlayer) play(audio Audio) {
 
 	time.Sleep(100 * time.Millisecond) // should be enough time for the speaking event to process before modifying the playing state
 
-	// Save the decrypted audio data to a file
-	if err := saveDecryptedAudio(decryptedData.Bytes(), "local/decrypted_audio.opus"); err != nil {
-		fmt.Println("Failed to save decrypted audio:", err)
-	}
-
 	a.mu.Lock()
 	a.playing = false
 	a.mu.Unlock()
 }
 
-func saveDecryptedAudio(data []byte, filename string) error {
-	// Get the current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current working directory: %w", err)
+func (a *audioPlayer) sendAudio(frameTime time.Duration, packetChan chan []byte) error {
+	ticker := time.NewTicker(frameTime)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-a.GetUdpSession().GetSession().ctx.Done():
+			return nil
+		case msg, ok := <-packetChan:
+			if !ok {
+				return nil
+			} else if !a.IsConnected() {
+				return nil
+			}
+
+			a.GetUdpSession().Write(msg)
+
+			a.GetUdpSession().PacketSent()
+			a.GetUdpSession().BytesSent(len(msg)) // packet size
+
+			<-ticker.C
+		}
+	}
+}
+
+func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int) error {
+	// done channel
+	done := make(chan struct{})
+	// incrementals
+	var seq uint16
+	var timestamp uint32
+	var nonceCounter uint32
+	timestamp = uint32((time.Now().Unix() / 4) - 1)
+
+	// encoded := audio.GetData()
+	encryptionMode := a.GetUdpSession().GetConnData().Mode
+	secretKey := a.GetUdpSession().GetSession().SecretKey
+	ssrc := a.GetUdpSession().GetConnData().SSRC
+
+	// TODO: add a NewRTPHeader method to voice.RTPHeader that can take a seq, timestamp, and ssrc
+	rtpHeader := voice.RTPHeader{
+		Version:     2,
+		Padding:     false,
+		Extension:   false,
+		CSRCCount:   0,
+		Marker:      false,
+		PayloadType: 120,
+		Seq:         seq,
+		Timestamp:   timestamp,
+		SSRC:        uint32(ssrc),
+		CSRC:        []uint32{},
 	}
 
-	// Construct the absolute path to the local directory
-	absPath := filepath.Join(cwd, "local", filename)
+	// Silence frame for the end-of-stream silence
+	silenceFrame := []byte{0xF8, 0xFF, 0xFE}
 
-	// Create the local directory if it doesn't exist
-	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
-		return fmt.Errorf("failed to create local directory: %w", err)
+	for {
+		select {
+		case <-a.GetUdpSession().GetSession().ctx.Done():
+			close(done)
+			return nil
+		case encoded, ok := <-audio.GetStream():
+			if !ok {
+				break
+			}
+			rtpHeader.Seq = seq
+			rtpHeader.Timestamp = timestamp
+			packet, err := a.encryptAudio(encoded, rtpHeader, encryptionMode, nonceCounter, secretKey)
+			if err != nil {
+				a.session.GetSession().errorChan <- err
+				return nil
+			}
+
+			sendChan <- packet.Bytes()
+
+			nonceCounter++
+			seq++
+			timestamp += uint32(frameSize)
+		case <-done:
+		silenceLoop:
+			for i := 0; i < 5; i++ {
+				select {
+				case <-a.GetUdpSession().GetSession().ctx.Done():
+					break silenceLoop
+				default:
+					rtpHeader.Seq = seq
+					rtpHeader.Timestamp = timestamp
+
+					packet, err := a.encryptAudio(silenceFrame, rtpHeader, encryptionMode, nonceCounter, secretKey)
+					if err != nil {
+						a.session.GetSession().errorChan <- err
+						return err
+					}
+
+					sendChan <- packet.Bytes()
+
+					// Increment the nonce counter, sequence, and timestamp
+					nonceCounter++
+					seq++
+					timestamp += uint32(frameSize)
+				}
+			}
+			a.GetUdpSession().ResetSentData()
+			return nil
+		}
 	}
-
-	// Write the file to the local directory
-	return os.WriteFile(absPath, data, 0644)
 }
 
 func (a *audioPlayer) encryptAudio(unencryptedAudio []byte, header voice.RTPHeader, encryptionMode voice.TransportEncryptionMode, nonceCounter uint32, secretKey [32]byte) (bytes.Buffer, error) {
@@ -308,6 +266,7 @@ func (a *audioPlayer) encryptAudio(unencryptedAudio []byte, header voice.RTPHead
 	}
 
 	switch encryptionMode {
+	// TODO: add support for chacha
 	case voice.AEAD_XCHACHA20_POLY1305:
 		chachaNonce := make([]byte, 24)
 		copy(chachaNonce[:12], headerBytes)
@@ -328,35 +287,6 @@ func (a *audioPlayer) encryptAudio(unencryptedAudio []byte, header voice.RTPHead
 	}
 
 	return encryptedAudio, nil
-}
-
-func (a *audioPlayer) decryptPayload(encryptedPacket []byte, encryptionMode voice.TransportEncryptionMode) ([]byte, error) {
-	// extract the RTP header from the first 12 bytes of the packet
-	rtpHeader := voice.RTPHeader{}
-	if err := rtpHeader.UnmarshalBinary(encryptedPacket[:12]); err != nil {
-		fmt.Println("failed to unmarshal RTP header:", err)
-		return nil, err
-	}
-	// extract the nonce from the last 4 bytes of the packet
-	nonce := binary.BigEndian.Uint32(encryptedPacket[len(encryptedPacket)-4:])
-	noncePadding := make([]byte, 12)
-	binary.BigEndian.PutUint32(noncePadding[:4], nonce)
-	var decryptedAudio bytes.Buffer
-	switch encryptionMode {
-	case voice.AEAD_XCHACHA20_POLY1305:
-		// Decrypt the packet using XChaCha20-Poly1305
-		// This is not implemented in this snippet
-	case voice.AEAD_AES256_GCM:
-		decryptedFrame, err := crypto.DecryptAESGCM(encryptedPacket[12:len(encryptedPacket)-4], a.GetUdpSession().GetSession().SecretKey[:], noncePadding, encryptedPacket[:12])
-		if err != nil {
-			fmt.Println("failed to decrypt frame:", err)
-			return nil, err
-		}
-		decryptedAudio.Write(decryptedFrame)
-	default:
-	}
-
-	return decryptedAudio.Bytes(), nil
 }
 
 func (a *audioPlayer) IsPlaying() bool {
@@ -383,6 +313,12 @@ func (a *audioPlayer) SetUdpSession(session UdpSession) {
 	a.session = session
 }
 
+func (a *audioPlayer) GetVoiceSession() VoiceSession {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.voiceSession
+}
+
 func (a *audioPlayer) SetVoiceSession(v VoiceSession) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -393,38 +329,39 @@ func (a *audioPlayer) SetVoiceSession(v VoiceSession) {
 type Audio interface {
 	RegisterFile(path string) error
 	RegisterStream()
-	GetData() []byte
 	GetMetadata() voice.AudioMetadata
+	GetStream() chan []byte
 }
 
 type audio struct {
 	mu       sync.Mutex
 	metadata voice.AudioMetadata
-	data     io.Reader
-	buffer   []byte
 	stream   chan []byte
 }
 
 var _ Audio = (*audio)(nil)
 
+// NewAudio will initialize a new Audio instance, setting up the stream for audio and the mutex for thread safety
 func NewAudio() Audio {
 	return &audio{
 		mu:     sync.Mutex{},
-		stream: make(chan []byte, 100),
+		stream: make(chan []byte),
 	}
 }
 
+// RegisterFile is a temporary function while I work on a more permanent solution, for now this will take a file path to any audio file (should in theory handle mp4 m4a etc) and process the audio into PCM.
+// The PCM data will be encoded per-frame to Opus frames and sent to the stream channel.
 func (a *audio) RegisterFile(path string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	audio, metadata, err := ffmpeg.ConvertFileToOpus(path, true)
+	metadata, err := ffmpeg.ConvertFileToOpus(path, true, a.stream)
 	if err != nil {
 		return errors.New("failed to convert file to Opus: " + err.Error())
 	}
 
-	a.data = bufio.NewReader(bytes.NewReader(audio))
 	a.metadata = *metadata
+	close(a.stream)
 	return nil
 }
 
@@ -451,27 +388,12 @@ func (a *audio) RegisterStream() {
 	// a.data = audioReader
 }
 
-func (a *audio) GetData() []byte {
+func (a *audio) GetMetadata() voice.AudioMetadata {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
-	// If the buffer is already populated, return it
-	if a.buffer != nil {
-		return a.buffer
-	}
-
-	// Read from the data reader and store in the buffer
-	buf := new(bytes.Buffer)
-	_, err := buf.ReadFrom(a.data)
-	if err != nil {
-		fmt.Println("failed to read data:", err)
-		return nil
-	}
-
-	a.buffer = buf.Bytes()
-	return a.buffer
+	return a.metadata
 }
 
-func (a *audio) GetMetadata() voice.AudioMetadata {
-	return a.metadata
+func (a *audio) GetStream() chan []byte {
+	return a.stream
 }

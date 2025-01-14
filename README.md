@@ -24,9 +24,7 @@ go get github.com/Carmen-Shannon/simple-discord@latest
 Make sure you install the simple-discord project:
 ```go get github.com/Carmen-Shannon/simple-discord@latest```
 
-## NOTE ##
-**This is old code, like from yesterday, it needs to be updated... it just wont work rn sry**
-Import the bot package into your main application, and set up a new `Bot` instance:
+### Import the bot package into your main application, and set up a new `Bot` instance:
 ```go
 import (
     "github.com/Carmen-Shannon/simple-discord/bot"
@@ -59,7 +57,7 @@ func main() {
 }
 ```
 
-Setting up custom interaction handlers (for slash commands):
+### Setting up custom interaction handlers (for slash commands):
 - custom commands need to accept two arguments; *session.Session, and gateway.Payload
 - custom commands need to return an error
 - with auto-sharding, you can use the *session.Session argument to access the shard receiving the event
@@ -110,7 +108,10 @@ func main() {
 }
 ```
 
-Registering commands with the Discord API:
+### Setting up custom handlers (for discord gateway events)
+- these handlers
+
+### Registering commands with the Discord API:
 - registering commands requires at least the Application ID of your bot which can be found in your developer portal
 - you can register global commands with just an Application ID but there is a delay of about 15 minutes from registering the command until the bot will have access to it
 - to test commands in a local server, you can register Guild commands using the Application ID of the bot and the Guild ID of the server you are using to test
@@ -151,10 +152,15 @@ This list will change as I want to add things
     - [ ] Voice gateway management
         - [x] Voice Gateway Connection/Upkeep
         - [x] Voice Gateway UDP Connection/Upkeep
+            - [x] Voice Encoding (playing audio)
+            - [ ] Voice Decoding (recording audio)
         - [ ] DAVE Voice support
 - [x] Event handler
-- [ ] Shard management
+- [x] Shard management
 - [ ] HTTP requests
+    - [ ] Rate Limiting
+        - [ ] Global Rate Limiting
+        - [ ] Local Rate Limiting
     - [x] Application requests
     - [x] Application Role Connection Metadata requests
     - [x] Audit Log requests
@@ -176,6 +182,7 @@ This list will change as I want to add things
 - [X] Registering Custom Commands
     - [x] Registering Global Commands
     - [x] Registering Guild Commands
+    - [x] Registering Custom Handlers
 - [ ] Tests
     - [ ] Integration tests
         - [ ] Gateway integration tests

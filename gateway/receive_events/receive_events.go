@@ -39,7 +39,7 @@ func (h *HeartbeatEvent) MarshalJSON() ([]byte, error) {
 	return json.Marshal(*h.LastSequence)
 }
 
-type HeartbeatACKEvent struct{
+type HeartbeatACKEvent struct {
 	Nonce int `json:"t"`
 }
 
@@ -57,13 +57,27 @@ type VoiceClientsConnectEvent struct {
 	UserIDs []structs.Snowflake `json:"user_ids"`
 }
 
+type VoiceClientDisconnectEvent struct {
+	UserID structs.Snowflake `json:"user_id"`
+}
+
+type VoicePrepareEpochEvent struct {
+	Epoch           int `json:"epoch"`
+	ProtocolVersion int `json:"protocol_version"`
+}
+
+type VoicePrepareTransitionEvent struct {
+	ProtocolVersion int `json:"protocol_version"`
+	TransitionID    int `json:"transition_id"`
+}
+
 type SpeakingEvent struct {
 	structs.SpeakingEvent
 }
 
 type VoiceSessionDescriptionEvent struct {
 	Mode      voice.TransportEncryptionMode `json:"mode"`
-	SecretKey [32]byte                        `json:"secret_key"`
+	SecretKey [32]byte                      `json:"secret_key"`
 }
 
 type ReadyEvent struct {

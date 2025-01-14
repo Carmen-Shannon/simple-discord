@@ -198,6 +198,7 @@ func handleSendDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error
 	} else {
 		packet.SSRC = payload.SSRC
 	}
+	fmt.Println("SENDING DISCOVERY SSRC:", packet.SSRC)
 
 	if payload.Address == [64]byte{} {
 		packet.Address = [64]byte{}
@@ -221,6 +222,8 @@ func handleReceiveDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) er
 	externalPort := payload.Port
 	ssrc := payload.SSRC
 
+	fmt.Println("RECEIVING DISCOVERY SSRC:", ssrc)
+
 	s.GetConnData().Address = externalIP
 	s.GetConnData().Port = int(externalPort)
 	s.GetConnData().SSRC = int(ssrc)
@@ -236,10 +239,11 @@ func handleReceiveDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) er
 func handleSendVoiceIdentifyEvent(s VoiceSession, p voice.VoicePayload) error {
 	// no DAVE support yet, include DaveProtocolVersion
 	voiceIdentifyEvent := sendevents.VoiceIdentifyEvent{
-		ServerID:  *s.GetGuildID(),
-		UserID:    s.GetBotData().UserDetails.ID,
-		SessionID: *s.GetSessionID(),
-		Token:     *s.GetToken(),
+		ServerID:               *s.GetGuildID(),
+		UserID:                 s.GetBotData().UserDetails.ID,
+		SessionID:              *s.GetSessionID(),
+		Token:                  *s.GetToken(),
+		MaxDaveProtocolVersion: util.ToPtr(0),
 	}
 	ackPayload := voice.VoicePayload{
 		OpCode: voice.Identify,
@@ -262,7 +266,8 @@ func handleSendVoiceSelectProtocolEvent(s VoiceSession, p voice.VoicePayload) er
 			Port:    s.GetAudioPlayer().GetUdpSession().GetConnData().Port,
 			Mode:    s.GetAudioPlayer().GetUdpSession().GetConnData().Mode,
 		},
-		Codecs: []voice.Codec{voice.Opus},
+		Codecs:              []voice.Codec{voice.Opus},
+		DaveProtocolVersion: util.ToPtr(0),
 	}
 	selectProtocolPayload := voice.VoicePayload{
 		OpCode: voice.SelectProtocol,
@@ -286,6 +291,7 @@ func handleVoiceReadyEvent(s VoiceSession, p voice.VoicePayload) error {
 			Port:    voiceReadyEvent.Port,
 			SSRC:    voiceReadyEvent.SSRC,
 		}
+		fmt.Println(voiceReadyEvent.Modes)
 		if util.SliceContains(voiceReadyEvent.Modes, voice.AEAD_AES256_GCM) {
 			udpConn.Mode = voice.AEAD_AES256_GCM
 		} else if len(voiceReadyEvent.Modes) == 1 {
@@ -340,14 +346,18 @@ func handleVoiceSpeakingEvent(s VoiceSession, p voice.VoicePayload) error {
 	ssrc := s.GetAudioPlayer().GetUdpSession().GetConnData().SSRC
 	if s.GetAudioPlayer() != nil && s.GetAudioPlayer().IsPlaying() {
 		fmt.Println("SPEAKING STOP")
-		speakingEvent.Speaking = structs.Bitfield[structs.SpeakingFlag]{}
-		speakingEvent.Delay = 0
-		speakingEvent.SSRC = &ssrc
+		speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
+			Speaking: structs.Bitfield[structs.SpeakingFlag]{},
+			Delay:    0,
+			SSRC:     &ssrc,
+		}
 	} else {
 		fmt.Println("SPEAKING START")
-		speakingEvent.Speaking = structs.Bitfield[structs.SpeakingFlag]{structs.SpeakingFlagMicrophone}
-		speakingEvent.Delay = 0
-		speakingEvent.SSRC = &ssrc
+		speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
+			Speaking: structs.Bitfield[structs.SpeakingFlag]{structs.SpeakingFlagMicrophone},
+			Delay:    0,
+			SSRC:     &ssrc,
+		}
 	}
 	speakingPayload := voice.VoicePayload{
 		OpCode: voice.Speaking,
@@ -402,7 +412,11 @@ func handleVoiceResumedEvent(s VoiceSession, p voice.VoicePayload) error {
 
 func handleVoiceClientsConnectEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE CLIENTS CONNECT EVENT")
-	fmt.Println("VOICE CLIENTS CONNECT NOT IMPLEMENTED")
+	if _, ok := p.Data.(receiveevents.VoiceClientsConnectEvent); ok {
+		// fmt.Println(event)
+	} else {
+		return errors.New("unexpected payload data type")
+	}
 	return nil
 }
 

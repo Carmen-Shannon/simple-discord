@@ -36,9 +36,10 @@ type VoiceIdentifyEvent struct {
 }
 
 type VoiceSelectProtocolEvent struct {
-	Protocol string                  `json:"protocol"`
-	Data     VoiceSelectProtocolData `json:"data"`
-	Codecs   []voice.Codec           `json:"codecs"`
+	Protocol            string                  `json:"protocol"`
+	Data                VoiceSelectProtocolData `json:"data"`
+	Codecs              []voice.Codec           `json:"codecs"`
+	DaveProtocolVersion *int                    `json:"dave_protocol_version,omitempty"`
 }
 
 type VoiceSelectProtocolData struct {
@@ -48,7 +49,7 @@ type VoiceSelectProtocolData struct {
 }
 
 type SpeakingEvent struct {
-	structs.SpeakingEvent
+	*structs.SpeakingEvent
 }
 
 type VoiceResumeEvent struct {

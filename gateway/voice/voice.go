@@ -9,6 +9,7 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 )
 
+// TODO: delete this, it's unused. It's also not needed as we explicitly define the VoicePayload.Data when constructing a VoicePayload.
 func NewSendEvent(eventData voice.VoicePayload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {
@@ -179,24 +180,18 @@ func NewReceiveEvent(eventData voice.VoicePayload) (any, error) {
 		eventData.Data = event
 		return event, nil
 	case voice.ClientDisconnect:
-		// var event receiveevents.VoiceClientDisconnectEvent
-		var event json.RawMessage
+		var event receiveevents.VoiceClientDisconnectEvent
 		if err = json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
-
-		fmt.Println("ClientDisconnect event\n", string(event))
 
 		eventData.Data = event
 		return event, nil
 	case voice.PrepareTransition:
-		// var event receiveevents.VoicePrepareTransitionEvent
-		var event json.RawMessage
+		var event receiveevents.VoicePrepareTransitionEvent
 		if err = json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
-
-		fmt.Println("PrepareTransition event\n", string(event))
 
 		eventData.Data = event
 		return event, nil
@@ -212,13 +207,10 @@ func NewReceiveEvent(eventData voice.VoicePayload) (any, error) {
 		eventData.Data = event
 		return event, nil
 	case voice.PrepareEpoch:
-		// var event receiveevents.VoicePrepareEpochEvent
-		var event json.RawMessage
+		var event receiveevents.VoicePrepareEpochEvent
 		if err = json.Unmarshal(jsonData, &event); err != nil {
 			return nil, err
 		}
-
-		fmt.Println("PrepareEpoch event\n", string(event))
 
 		eventData.Data = event
 		return event, nil
@@ -256,6 +248,7 @@ func NewBinaryReceiveEvent(eventData voice.BinaryVoicePayload) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("Received Binary Event:", eventData.OpCode)
 	// TODO: flesh this function out with the binary receive events
 
 	// switch eventData.OpCode {

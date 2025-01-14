@@ -169,6 +169,11 @@ func (v *voiceSession) Connect() error {
 	}
 
 	<-v.GetAudioPlayer().GetUdpSession().GetSession().connectionReady
+
+	if err := v.GetAudioPlayer().Connect(); err != nil {
+		v.Exit()
+		return err
+	}
 	v.SetConnected(true)
 	return nil
 }
@@ -232,6 +237,12 @@ func (v *voiceSession) Exit() error {
 		v.stopHeartbeat = nil
 	}
 
+	if v.GetAudioPlayer().IsConnected() {
+		if err := v.GetAudioPlayer().GetUdpSession().Exit(); err != nil {
+			v.errorChan <- fmt.Errorf("error closing udp session: %v", err)
+		}
+	}
+
 	if v.GetConnected() {
 		if err := v.GetConn().Close(websocket.StatusNormalClosure, "disconnect"); err != nil {
 			if !errors.Is(err, net.ErrClosed) && !errors.As(err, &websocket.CloseError{Code: websocket.StatusNormalClosure}) {
@@ -240,14 +251,8 @@ func (v *voiceSession) Exit() error {
 		}
 	}
 
-	if v.GetAudioPlayer().IsConnected() {
-		if err := v.GetAudioPlayer().GetUdpSession().Exit(); err != nil {
-			v.errorChan <- fmt.Errorf("error closing udp session: %v", err)
-		}
-	}
-
 	v.cancel()
-	time.Sleep(1 * time.Second) //arbitrary sleep to allow for cleanup
+
 	close(v.readChan)
 	close(v.writeChan)
 	close(v.errorChan)
@@ -333,7 +338,7 @@ func (v *voiceSession) handleRead() {
 		default:
 			_, bytes, err := v.Conn.Read(v.ctx)
 			if err != nil {
-				if websocket.CloseStatus(err) == websocket.StatusNormalClosure || errors.Is(err, io.EOF) {
+				if websocket.CloseStatus(err) == websocket.StatusNormalClosure || websocket.CloseStatus(err) == 4014 || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 					return
 				}
 				v.errorChan <- fmt.Errorf("error reading from voice websocket: %v", err)
@@ -423,6 +428,7 @@ func (v *voiceSession) handleWrite() {
 
 				if err := wsjson.Write(v.ctx, v.Conn, msg); err != nil {
 					if errors.Is(err, net.ErrClosed) {
+						v.Exit()
 						return
 					}
 					if retryCount < maxRetries {

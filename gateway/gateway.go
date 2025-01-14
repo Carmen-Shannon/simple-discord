@@ -10,6 +10,7 @@ import (
 )
 
 // this function will take an un-typed Payload and return the appropriate type based on the OpCode
+// TODO: delete this, it's unused
 func NewSendEvent(eventData gateway.Payload) (any, error) {
 	jsonData, err := json.Marshal(eventData.Data)
 	if err != nil {

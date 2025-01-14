@@ -7,6 +7,7 @@ import (
 )
 
 // EncryptXChaCha20Poly1305 encrypts the plaintext using XChaCha20-Poly1305 and uses the RTP header as the nonce
+// TODO: Implement chacha slide
 func EncryptXChaCha20Poly1305(plaintext, key, nonce []byte) ([]byte, error) {
 	aead, err := chacha20poly1305.NewX(key)
 	if err != nil {

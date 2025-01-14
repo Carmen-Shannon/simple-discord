@@ -14,7 +14,8 @@ import (
 
 	gateway "github.com/Carmen-Shannon/simple-discord/gateway"
 	requestutil "github.com/Carmen-Shannon/simple-discord/gateway/request_util"
-	. "github.com/Carmen-Shannon/simple-discord/session/voice"
+	sendevents "github.com/Carmen-Shannon/simple-discord/gateway/send_events"
+	voice_session "github.com/Carmen-Shannon/simple-discord/session/voice"
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/structs/dto"
 	gateway_structs "github.com/Carmen-Shannon/simple-discord/structs/gateway"
@@ -28,9 +29,8 @@ type CommandFunc func(s Session, p gateway_structs.Payload) error
 type Session interface {
 	JoinVoice(guildID, channelID structs.Snowflake) error
 	LeaveVoice(guildID structs.Snowflake) error
-	Play(filepath string) (*AudioPlayer, error)
+	Play(filepath string, guildID structs.Snowflake) (*voice_session.AudioPlayer, error)
 	Exit() error
-	NewVoiceSession()
 	Write(data []byte)
 	SendMessage(messageOptions dto.MessageOptions) error
 	InteractionReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error
@@ -61,8 +61,10 @@ type Session interface {
 	AddServer(server structs.Server)
 	GetBotData() *structs.BotData
 	SetBotData(bot *structs.BotData)
-	SetVoiceSession(session VoiceSession)
-	GetVoiceSession() VoiceSession
+	GetVoiceSession(guildID structs.Snowflake) voice_session.VoiceSession
+	AddVoiceSession(guildID structs.Snowflake, session voice_session.VoiceSession)
+	NewVoiceSession(guildID structs.Snowflake)
+	SetVoiceSessionBotData(botData *structs.BotData)
 	GetShard() *int
 	SetShard(shard *int)
 	GetShards() *int
@@ -106,8 +108,8 @@ type session struct {
 	// Bot details
 	BotData *structs.BotData
 
-	// Voice session
-	Voice VoiceSession
+	// Voice Sessions
+	VoiceSessions map[string]voice_session.VoiceSession
 
 	// Shard ID
 	Shard *int
@@ -139,15 +141,13 @@ func NewSession(token string, intents []structs.Intent, shard *int) (Session, er
 	sess.EventHandler = NewEventHandler()
 	sess.Intents = intents
 	sess.Servers = make(map[string]structs.Server)
+	sess.VoiceSessions = make(map[string]voice_session.VoiceSession)
 	sess.ctx, sess.cancel = context.WithCancel(context.Background())
 	sess.helloReceived = make(chan struct{})
 	sess.stopHeartbeat = make(chan struct{})
 	sess.readChan = make(chan []byte)
 	sess.writeChan = make(chan []byte, 4096)
 	sess.errorChan = make(chan error)
-
-	// set up a dummy voice session
-	sess.NewVoiceSession()
 
 	if shard != nil {
 		sess.SetShard(shard)
@@ -179,10 +179,13 @@ func NewSession(token string, intents []structs.Intent, shard *int) (Session, er
 	return &sess, nil
 }
 
-func (s *session) NewVoiceSession() {
-	vs := NewVoiceSession()
+// NewVoiceSession is responsible for assigning a new disconnected VoiceSession to this Session.
+// It will carry the BotData which holds the bot details from the Session.
+func (s *session) NewVoiceSession(guildID structs.Snowflake) {
+	vs := voice_session.NewVoiceSession()
 	vs.SetBotData(s.GetBotData())
-	s.SetVoiceSession(vs)
+	vs.SetGuildID(guildID)
+	s.AddVoiceSession(guildID, vs)
 }
 
 // RegisterCommands adds custom commands to the EventHandler
@@ -226,12 +229,14 @@ func (s *session) Exit() error {
 		s.stopHeartbeat = nil
 	}
 
-	// Close the voice connection if there is one still active
-	if s.GetVoiceSession() != nil && s.GetVoiceSession().GetConnected() {
-		if err := s.GetVoiceSession().Exit(); err != nil {
+	// Close the voice connection(s) if there are any still active
+	for _, vs := range s.VoiceSessions {
+		if err := vs.Exit(); err != nil {
 			return err
 		}
 	}
+	s.VoiceSessions = make(map[string]voice_session.VoiceSession)
+
 	// Close the connection
 	if err := s.Conn.Close(websocket.StatusNormalClosure, "disconnect"); err != nil {
 		if !errors.Is(err, net.ErrClosed) {
@@ -240,7 +245,7 @@ func (s *session) Exit() error {
 	}
 
 	s.cancel()
-	time.Sleep(1 * time.Second) //arbitrary sleep to allow for cleanup
+
 	// Close the channels
 	close(s.readChan)
 	close(s.writeChan)
@@ -254,13 +259,6 @@ func (s *session) ResumeSession() error {
 	if s.stopHeartbeat != nil {
 		close(s.stopHeartbeat)
 		s.stopHeartbeat = nil
-	}
-
-	if s.GetVoiceSession().GetConnected() {
-		err := s.GetVoiceSession().ResumeSession()
-		if err != nil {
-			return err
-		}
 	}
 
 	// open a new connection using the cached url
@@ -303,8 +301,6 @@ func (s *session) ReconnectSession() error {
 		s.stopHeartbeat = nil
 	}
 
-	s.NewVoiceSession()
-
 	ws, err := s.dialer(nil, "/?v=10&encoding=json")
 	if err != nil {
 		return err
@@ -337,26 +333,38 @@ func (s *session) ReconnectSession() error {
 	return nil
 }
 
+// JoinVoice allows you to initialize a Voice Session and connect to a voice channel.
+// It requires having the guildID and channelID of the voice channel you wish to connect to.
+// TODO: Add support for multiple voice sessions, this is intended to be used so that each guild can have one active voice session.
 func (s *session) JoinVoice(guildID, channelID structs.Snowflake) error {
-	if s.GetVoiceSession() == nil {
-		return fmt.Errorf("voice session not initialized")
+	vs := s.GetVoiceSession(guildID)
+	if vs == nil {
+		s.NewVoiceSession(guildID)
+		vs = s.GetVoiceSession(guildID)
 	}
-	if s.GetVoiceSession().GetConnected() {
-		if !channelID.Equals(*s.GetVoiceSession().GetChannelID()) &&
-			guildID.Equals(*s.GetVoiceSession().GetGuildID()) {
-			if err := s.GetVoiceSession().Exit(); err != nil {
+	if vs.GetConnected() {
+		if !channelID.Equals(*vs.GetChannelID()) &&
+			guildID.Equals(*vs.GetGuildID()) {
+			if err := vs.Exit(); err != nil {
 				return err
 			}
-			s.NewVoiceSession()
+			s.NewVoiceSession(guildID)
 		}
+	} else {
+		vs.SetGuildID(guildID)
+		vs.SetChannelID(channelID)
+		vs.SetBotData(s.GetBotData())
 	}
-	s.GetVoiceSession().SetGuildID(guildID)
-	s.GetVoiceSession().SetChannelID(channelID)
-	s.GetVoiceSession().SetBotData(s.GetBotData())
 
 	// send the voice state update payload
 	var voiceStateUpdate gateway_structs.Payload
 	voiceStateUpdate.OpCode = gateway_structs.VoiceStateUpdate
+	voiceStateUpdate.Data = sendevents.UpdateVoiceStateEvent{
+		GuildID:   &guildID,
+		ChannelID: &channelID,
+		SelfMute:  false,
+		SelfDeaf:  false,
+	}
 
 	if err := s.EventHandler.HandleEvent(s, voiceStateUpdate); err != nil {
 		return err
@@ -364,8 +372,8 @@ func (s *session) JoinVoice(guildID, channelID structs.Snowflake) error {
 
 	// wait for the voice gateway to be ready, timeout after 5 seconds
 	select {
-	case <-s.GetVoiceSession().GetSession().ConnectReady:
-		if err := s.GetVoiceSession().Connect(); err != nil {
+	case <-vs.GetSession().ConnectReady:
+		if err := vs.Connect(); err != nil {
 			return err
 		}
 	case <-time.After(5 * time.Second):
@@ -375,48 +383,59 @@ func (s *session) JoinVoice(guildID, channelID structs.Snowflake) error {
 	return nil
 }
 
+// LeaveVoice allows you to disconnect from a voice channel and close the voice session connection.
 func (s *session) LeaveVoice(guildID structs.Snowflake) error {
-	if s.GetVoiceSession() == nil {
+	vs := s.GetVoiceSession(guildID)
+	if vs == nil {
 		return fmt.Errorf("voice session not initialized")
 	}
-	s.GetVoiceSession().SetGuildID(guildID)
-	s.GetVoiceSession().ClearChannelID()
+	vs.SetGuildID(guildID)
+	vs.ClearChannelID()
 
 	// send the voice state update payload
 	var voiceStateUpdate gateway_structs.Payload
 	voiceStateUpdate.OpCode = gateway_structs.VoiceStateUpdate
+	voiceStateUpdate.Data = sendevents.UpdateVoiceStateEvent{
+		GuildID:   &guildID,
+		ChannelID: nil,
+		SelfMute:  false,
+		SelfDeaf:  false,
+	}
 
 	if err := s.EventHandler.HandleEvent(s, voiceStateUpdate); err != nil {
 		return err
 	}
 
-	if err := s.GetVoiceSession().Exit(); err != nil {
-		s.SetVoiceSession(nil)
-		s.NewVoiceSession()
+	if err := vs.Exit(); err != nil {
+		s.NewVoiceSession(guildID)
 		return err
 	}
 
-	s.NewVoiceSession()
+	s.NewVoiceSession(guildID)
 	return nil
 }
 
-func (s *session) Play(filepath string) (*AudioPlayer, error) {
-	if s.GetVoiceSession() == nil {
+// Play is used to play an audio file in the voice channel the bot is connected to.
+// TODO: Add support for multiple voice sessions, this function should be able to play audio with one VoiceSession per-guild.
+func (s *session) Play(filepath string, guildID structs.Snowflake) (*voice_session.AudioPlayer, error) {
+	vs := s.GetVoiceSession(guildID)
+	if vs == nil {
 		return nil, fmt.Errorf("voice session not initialized")
 	}
-	if !s.GetVoiceSession().GetConnected() {
-		if err := s.GetVoiceSession().Connect(); err != nil {
+	if !vs.GetConnected() {
+		if err := vs.Connect(); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := s.GetVoiceSession().GetAudioPlayer().Play(filepath); err != nil {
+	if err := vs.GetAudioPlayer().Play(filepath); err != nil {
 		return nil, err
 	}
 
-	return util.ToPtr(s.GetVoiceSession().GetAudioPlayer()), nil
+	return util.ToPtr(vs.GetAudioPlayer()), nil
 }
 
+// SendMessage is used to send a message to a channel, you must specify the channelID with the messageOptions.SetChannelID method
 func (s *session) SendMessage(messageOptions dto.MessageOptions) error {
 	done := make(chan error)
 
@@ -845,18 +864,24 @@ func (s *session) SetBotData(bot *structs.BotData) {
 	s.BotData = bot
 }
 
-func (s *session) SetVoiceSession(session VoiceSession) {
+func (s *session) AddVoiceSession(guildID structs.Snowflake, session voice_session.VoiceSession) {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	s.Voice = session
+	s.VoiceSessions[guildID.ToString()] = session
 }
 
-func (s *session) GetVoiceSession() VoiceSession {
+func (s *session) GetVoiceSession(guildID structs.Snowflake) voice_session.VoiceSession {
 	s.Mu.Lock()
 	defer s.Mu.Unlock()
 
-	return s.Voice
+	for _, session := range s.VoiceSessions {
+		if session.GetGuildID().Equals(guildID) {
+			return session
+		}
+	}
+
+	return nil
 }
 
 func (s *session) GetShard() *int {
@@ -906,4 +931,13 @@ func (s *session) GetSession() *session {
 	defer s.Mu.Unlock()
 
 	return s
+}
+
+func (s *session) SetVoiceSessionBotData(botData *structs.BotData) {
+	s.Mu.Lock()
+	defer s.Mu.Unlock()
+
+	for _, vs := range s.VoiceSessions {
+		vs.SetBotData(botData)
+	}
 }
