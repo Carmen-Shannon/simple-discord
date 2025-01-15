@@ -74,7 +74,7 @@ import (
 func main() {
 
     ...
-    
+
     // set up a new handler function with the proper arguments and error response
     testCommand := func(sess *session.Session, payload gateway.Payload) error {
         // this is boilerplate, you don't need to include it but it does allow you to use the interactionEvent directly and access all of the associated properties
@@ -119,39 +119,39 @@ func main() {
 ...
 
 messageListener := func(sess session.Session, payload gateway.Payload) error {
-		messageEvent, ok := payload.Data.(receiveevents.MessageCreateEvent)
-		if !ok {
-			return fmt.Errorf("could not assert payload.Data to MessageCreateEvent")
-		}
+    messageEvent, ok := payload.Data.(receiveevents.MessageCreateEvent)
+    if !ok {
+        return fmt.Errorf("could not assert payload.Data to MessageCreateEvent")
+    }
 
-		// don't do anything if the message comes from the bot
-		if messageEvent.Author.ID.Equals(sess.GetBotData().UserDetails.ID) {
-			return nil
-		}
+    // don't do anything if the message comes from the bot
+    if messageEvent.Author.ID.Equals(sess.GetBotData().UserDetails.ID) {
+        return nil
+    }
 
-        // if it's not a message we can interact with just return early
-		if messageEvent.Type.Value != 0 {
-			return nil
-		}
+    // if it's not a message we can interact with just return early
+    if messageEvent.Type.Value != 0 {
+        return nil
+    }
 
-		// make the bot respond to a message with specific starting content, i.e a message that starts with ?
-		if messageEvent.Content[0] == '?' {
-			msg := dto.NewMessageOptions()
-			msg.SetChannelID(messageEvent.ChannelID)
-			if err := msg.SetContent("testing a response"); err != nil {
-				return fmt.Errorf("could not set content for message: %v", err)
-			}
-			if err := msg.SetMessageReference(*messageEvent.Message, *messageEvent.GuildID, nil); err != nil {
-				return fmt.Errorf("could not set message reference for message: %v", err)
-			}
+    // make the bot respond to a message with specific starting content, i.e a message that starts with ?
+    if messageEvent.Content[0] == '?' {
+        msg := dto.NewMessageOptions()
+        msg.SetChannelID(messageEvent.ChannelID)
+        if err := msg.SetContent("testing a response"); err != nil {
+            return fmt.Errorf("could not set content for message: %v", err)
+        }
+        if err := msg.SetMessageReference(*messageEvent.Message, *messageEvent.GuildID, nil); err != nil {
+            return fmt.Errorf("could not set message reference for message: %v", err)
+        }
 
-			err := sess.SendMessage(msg)
-			if err != nil {
-				return fmt.Errorf("could not send message: %v", err)
-			}
-		}
-		return nil
-	}
+        err := sess.SendMessage(msg)
+        if err != nil {
+            return fmt.Errorf("could not send message: %v", err)
+        }
+    }
+    return nil
+}
 
 ...
 
