@@ -26,7 +26,8 @@ var ffmpegFiles embed.FS
 var (
 	ffmpegPath  string
 	ffprobePath string
-	ffmpegCmd   *exec.Cmd
+	FfmpegCmd   *exec.Cmd
+	FfprobeCmd  *exec.Cmd
 	once        sync.Once
 )
 
@@ -126,7 +127,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	}
 
 	// Create a shell command to run FFmpeg to convert MP3 to raw PCM
-	ffmpegCmd = exec.Command(
+	FfmpegCmd = exec.Command(
 		ffmpegPath,
 		"-hide_banner",
 		"-i", absInputPath,
@@ -135,7 +136,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 		"-ac", "2",
 		"pipe:1",
 	)
-	ffmpegOut, err := ffmpegCmd.StdoutPipe()
+	ffmpegOut, err := FfmpegCmd.StdoutPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
@@ -143,7 +144,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	ffmpegBuf := bufio.NewReaderSize(ffmpegOut, 16384)
 
 	// Start the FFmpeg command
-	err = ffmpegCmd.Start()
+	err = FfmpegCmd.Start()
 	if err != nil {
 		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
@@ -192,13 +193,13 @@ func GetOpusMetadataFromBytes(input []byte) (*voice.AudioMetadata, error) {
 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
 	}
 
-	cmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", "pipe:0")
-	cmd.Stdin = bytes.NewReader(input)
+	ffmpegCmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", "pipe:0")
+	ffmpegCmd.Stdin = bytes.NewReader(input)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	err = cmd.Run()
+	ffmpegCmd.Stdout = &out
+	ffmpegCmd.Stderr = &stderr
+	err = ffmpegCmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
 	}
@@ -247,12 +248,12 @@ func GetOpusMetadataFromFile(filePath string) (*voice.AudioMetadata, error) {
 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
 	}
 
-	cmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", filePath)
+	FfprobeCmd = exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", filePath)
 	var out bytes.Buffer
 	var stderr bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
-	err = cmd.Run()
+	FfprobeCmd.Stdout = &out
+	FfprobeCmd.Stderr = &stderr
+	err = FfprobeCmd.Run()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
 	}

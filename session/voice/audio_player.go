@@ -121,7 +121,7 @@ func (a *audioPlayer) play(audio Audio) {
 		err := a.prepAudio(audio, packetChannel, sampleSize)
 		if err != nil {
 			a.session.GetSession().errorChan <- err
-			close(done)
+			close(packetChannel)
 			return
 		}
 		close(packetChannel)
@@ -178,6 +178,7 @@ func (a *audioPlayer) sendAudio(frameTime time.Duration, packetChan chan []byte)
 func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int) error {
 	// done channel
 	done := make(chan struct{})
+	var once sync.Once
 	// incrementals
 	var seq uint16
 	var timestamp uint32
@@ -209,10 +210,11 @@ func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int
 	for {
 		select {
 		case <-a.GetUdpSession().GetSession().ctx.Done():
-			close(done)
+			once.Do(func() { close(done) })
 			return nil
 		case encoded, ok := <-audio.GetStream():
 			if !ok {
+				once.Do(func() { close(done) })
 				break
 			}
 			rtpHeader.Seq = seq

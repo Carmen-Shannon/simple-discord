@@ -198,7 +198,6 @@ func handleSendDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) error
 	} else {
 		packet.SSRC = payload.SSRC
 	}
-	fmt.Println("SENDING DISCOVERY SSRC:", packet.SSRC)
 
 	if payload.Address == [64]byte{} {
 		packet.Address = [64]byte{}
@@ -221,8 +220,6 @@ func handleReceiveDiscoveryEvent(s UdpSession, payload voice.DiscoveryPacket) er
 	externalIP := string(bytes.Trim(payload.Address[:], "\x00"))
 	externalPort := payload.Port
 	ssrc := payload.SSRC
-
-	fmt.Println("RECEIVING DISCOVERY SSRC:", ssrc)
 
 	s.GetConnData().Address = externalIP
 	s.GetConnData().Port = int(externalPort)
@@ -291,7 +288,6 @@ func handleVoiceReadyEvent(s VoiceSession, p voice.VoicePayload) error {
 			Port:    voiceReadyEvent.Port,
 			SSRC:    voiceReadyEvent.SSRC,
 		}
-		fmt.Println(voiceReadyEvent.Modes)
 		if util.SliceContains(voiceReadyEvent.Modes, voice.AEAD_AES256_GCM) {
 			udpConn.Mode = voice.AEAD_AES256_GCM
 		} else if len(voiceReadyEvent.Modes) == 1 {

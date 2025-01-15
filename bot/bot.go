@@ -12,6 +12,7 @@ import (
 
 	"github.com/Carmen-Shannon/simple-discord/session"
 	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/util/ffmpeg"
 )
 
 type Bot interface {
@@ -298,6 +299,18 @@ func (b *bot) run(stopChan chan struct{}) error {
 	if err := b.exit(); err != nil {
 		close(stopChan)
 		return err
+	}
+
+	// this just doesn't work tbh need to find a solution, seems to be intermittently holding ffmpeg in-memory after it finishes using it
+	if ffmpeg.FfprobeCmd != nil && ffmpeg.FfprobeCmd.Process != nil {
+		if err := ffmpeg.FfprobeCmd.Process.Kill(); err != nil {
+			fmt.Printf("error killing ffprobe process: %v\n", err)
+		}
+	}
+	if ffmpeg.FfmpegCmd != nil && ffmpeg.FfmpegCmd.Process != nil {
+		if err := ffmpeg.FfmpegCmd.Process.Kill(); err != nil {
+			fmt.Printf("error killing ffmpeg process: %v\n", err)
+		}
 	}
 
 	// Cleanup temporary ffmpeg binaries

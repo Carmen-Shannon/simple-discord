@@ -72,7 +72,9 @@ import (
 )
 
 func main() {
+
     ...
+    
     // set up a new handler function with the proper arguments and error response
     testCommand := func(sess *session.Session, payload gateway.Payload) error {
         // this is boilerplate, you don't need to include it but it does allow you to use the interactionEvent directly and access all of the associated properties
@@ -109,7 +111,54 @@ func main() {
 ```
 
 ### Setting up custom handlers (for discord gateway events)
-- these handlers
+- these handlers use pre-set Listeners to listen to the discord gateway events
+- you can register custom handlers so the bot will behave a certain way when receiving one of these events
+- see session/eventhandler.go for the full list of Listeners, or see the docs for the RegisterListeners function
+```go
+
+...
+
+messageListener := func(sess session.Session, payload gateway.Payload) error {
+		messageEvent, ok := payload.Data.(receiveevents.MessageCreateEvent)
+		if !ok {
+			return fmt.Errorf("could not assert payload.Data to MessageCreateEvent")
+		}
+
+		// don't do anything if the message comes from the bot
+		if messageEvent.Author.ID.Equals(sess.GetBotData().UserDetails.ID) {
+			return nil
+		}
+
+        // if it's not a message we can interact with just return early
+		if messageEvent.Type.Value != 0 {
+			return nil
+		}
+
+		// make the bot respond to a message with specific starting content, i.e a message that starts with ?
+		if messageEvent.Content[0] == '?' {
+			msg := dto.NewMessageOptions()
+			msg.SetChannelID(messageEvent.ChannelID)
+			if err := msg.SetContent("testing a response"); err != nil {
+				return fmt.Errorf("could not set content for message: %v", err)
+			}
+			if err := msg.SetMessageReference(*messageEvent.Message, *messageEvent.GuildID, nil); err != nil {
+				return fmt.Errorf("could not set message reference for message: %v", err)
+			}
+
+			err := sess.SendMessage(msg)
+			if err != nil {
+				return fmt.Errorf("could not send message: %v", err)
+			}
+		}
+		return nil
+	}
+
+...
+
+client.RegisterListeners(map[session.Listener]session.CommandFunc{
+    session.MessageCreateListener: messageListener,
+})
+```
 
 ### Registering commands with the Discord API:
 - registering commands requires at least the Application ID of your bot which can be found in your developer portal

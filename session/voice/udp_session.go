@@ -119,6 +119,8 @@ func (u *udpSession) Connect() error {
 }
 
 func (u *udpSession) Exit() error {
+	u.cancel()
+	
 	if u.Conn != nil {
 		if err := u.Conn.Close(); err != nil {
 			if !errors.Is(err, net.ErrClosed) {
@@ -126,8 +128,6 @@ func (u *udpSession) Exit() error {
 			}
 		}
 	}
-
-	u.cancel()
 
 	close(u.readChan)
 	close(u.writeChan)
