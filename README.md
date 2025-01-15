@@ -4,17 +4,25 @@ simple-discord is designed to be a "simple" to use framework for interfacing wit
 
 ## Features
 
-- **Golang Performance**: Utilizes Go's performance by running the sending and receiving of data on different channels.
-- **Custom JSON Unmarshalling**: Populates an active session with easy-to-use Golang structs.
-- **Active Cache**: Maintains an active cache while the bot is running.
+- **Golang Performance**: Utilizes Go's performance by running the sending and receiving of data on different channels. Each event spawns a new Goroutine which handles the event asynchronously, allowing the session managers to handle multiple events concurrently.
+- **Custom JSON Unmarshalling**: Populates an active session with easy-to-use Golang structs. Every event and response from the Discord API is mapped to a local Go struct, including binary data with custom marshalling.
+- **Active Cache**: Maintains an active cache while the bot is running. (not fully implemented)
     - The bot will attempt to fetch requested data from its local cache that it actively builds while it receives gateway events
     - Each shard contains it's own cache, and the global cache of data can be accessed via the Bot instance
     - Most of the caching is abstracted to the user, so as you develop you shouldn't notice it
-- **Auto Sharding**: Automatically takes advantage of discord sharding based on the needs of the Bot
+    - For now the caching is really non-existent, most of the regular session events are updating the cache appropriately, and it should still be possible to access the cache from within custom handlers but it's not fleshed out fully.
+- **Auto Sharding**: Automatically takes advantage of discord sharding based on the needs of the Bot. Makes a bot gateway request to Discord and uses the recommended sharding details to automatically produce gateway sessions with the appropriate shard mapping.
+- **Full Integration**: Fully integrated with the Discord API, as well as the gateway's used to manage every event. Most definitions match 1-1 with the Discord developer docs, allowing developers to use the mature documentation as a reference.
+- **Audio Playback/Recording**: Capable of recording voice packets sent from the voice gateway/udp connection as well as encrypting voice packets to send to the channel to playback audio.
+    - Currently only works with static files, should work with any PCM audio format ffmpeg supports.
 
 ## Installation
-
 To run the project, simply install Go v1.22.3 or above, and run the following command to install the latest package into your project:
+
+# NOTE
+Currently the binaries for ffmpeg are not included in this package, I would like to include them in a separate voice package that will allow developers to import this package separately to save on the size of this library, in case they don't wish to use the voice features. For now I might include them here, to make it easier for new developers to get started with this library.
+
+If you wish you use the audio playback features included in this library, be sure to download the lts of ffmpeg for your system: https://www.ffmpeg.org/download.html the library is currently built to use 7.1 but any new major releases should integrate without issue, depending on the changes.
 
 ```sh
 go get github.com/Carmen-Shannon/simple-discord@latest
