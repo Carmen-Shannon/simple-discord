@@ -215,7 +215,8 @@ This list will change as I want to add things
     - [x] Audit Log requests
     - [x] Auto Moderation requests
     - [x] Channel requests
-    - [ ] Emoji requests
+    - [x] Emoji requests
+    - [ ] Entitlement requests
     - [ ] Guild requests
     - [ ] Guild Scheduled Event requests
     - [ ] Guild Template requests
