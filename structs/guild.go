@@ -94,6 +94,30 @@ const (
 	Tier3 PremiumTier = 3
 )
 
+type WidgetStyle string
+
+const (
+	WidgetStyleShield  WidgetStyle = "shield"
+	WidgetStyleBanner1 WidgetStyle = "banner1"
+	WidgetStyleBanner2 WidgetStyle = "banner2"
+	WidgetStyleBanner3 WidgetStyle = "banner3"
+	WidgetStyleBanner4 WidgetStyle = "banner4"
+)
+
+type OnboardingMode int
+
+const (
+	OnboardingModeDefault  OnboardingMode = 0
+	OnboardingModeAdvanced OnboardingMode = 1
+)
+
+type PromptType int
+
+const (
+	PromptTypeMultipleChoice PromptType = 0
+	PromptTypeDropdown       PromptType = 1
+)
+
 type WelcomeScreenChannel struct {
 	ChannelID   Snowflake  `json:"channel_id"`
 	Description string     `json:"description"`
@@ -224,4 +248,53 @@ type IntegrationApplication struct {
 	Icon        *string   `json:"icon,omitempty"`
 	Description string    `json:"description"`
 	Bot         *User     `json:"bot,omitempty"`
+}
+
+type Ban struct {
+	Reason string `json:"reason,omitempty"`
+	User   User   `json:"user"`
+}
+
+type GuildWidgetSettings struct {
+	Enabled   bool       `json:"enabled"`
+	ChannelID *Snowflake `json:"channel_id,omitempty"`
+}
+
+type GuildWidget struct {
+	ID            Snowflake `json:"id"`
+	Name          string    `json:"name"`
+	InstantInvite *string   `json:"instant_invite"`
+	Channels      []Channel `json:"channels"`
+	Members       []User    `json:"members"`
+	PresenceCount int       `json:"presence_count"`
+}
+
+type OnboardingPrompt struct {
+	ID           Snowflake      `json:"id"`
+	Type         PromptType     `json:"type"`
+	Options      []PromptOption `json:"options"`
+	Title        string         `json:"title"`
+	SingleSelect bool           `json:"single_select"`
+	Required     bool           `json:"required"`
+	InOnboarding bool           `json:"in_onboarding"`
+}
+
+type PromptOption struct {
+	ID            Snowflake   `json:"id"`
+	ChannelIDs    []Snowflake `json:"channel_ids"`
+	RoleIDs       []Snowflake `json:"role_ids"`
+	Emoji         *Emoji      `json:"emoji,omitempty"`
+	EmojiID       *Snowflake  `json:"emoji_id,omitempty"`
+	EmojiName     *string     `json:"emoji_name,omitempty"`
+	EmojiAnimated *bool       `json:"emoji_animated,omitempty"`
+	Title         string      `json:"title"`
+	Description   string      `json:"description,omitempty"`
+}
+
+type GuildOnboarding struct {
+	GuildID           Snowflake          `json:"guild_id"`
+	Prompts           []OnboardingPrompt `json:"prompts"`
+	DefaultChannelIDs []Snowflake        `json:"default_channel_ids"`
+	Enabled           bool               `json:"enabled"`
+	Mode              OnboardingMode     `json:"mode"`
 }

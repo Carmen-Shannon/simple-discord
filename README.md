@@ -30,7 +30,9 @@ go get github.com/Carmen-Shannon/simple-discord@latest
 
 ## Getting Started
 Make sure you install the simple-discord project:
-```go get github.com/Carmen-Shannon/simple-discord@latest```
+```sh
+go get github.com/Carmen-Shannon/simple-discord@latest
+```
 
 ### Import the bot package into your main application, and set up a new `Bot` instance:
 ```go
@@ -224,8 +226,8 @@ This list will change as I want to add things
     - [x] Auto Moderation requests
     - [x] Channel requests
     - [x] Emoji requests
-    - [ ] Entitlement requests
-    - [ ] Guild requests
+    - [x] Entitlement requests
+    - [x] Guild requests
     - [ ] Guild Scheduled Event requests
     - [ ] Guild Template requests
     - [x] Interaction Requests
