@@ -5,8 +5,8 @@ go 1.22.3
 require github.com/joho/godotenv v1.5.1
 
 require (
+	github.com/Carmen-Shannon/gopus v1.0.0
 	github.com/coder/websocket v1.8.12
-	github.com/companyzero/gopus v0.0.1
 	golang.org/x/crypto v0.31.0
 )
 

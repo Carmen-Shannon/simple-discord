@@ -1,7 +1,7 @@
+github.com/Carmen-Shannon/gopus v1.0.0 h1:Pb3fB7breVBpRvRCfiWmWEyEX9jkUkKVayzsHVhIijU=
+github.com/Carmen-Shannon/gopus v1.0.0/go.mod h1:JwplyoBen7MPosDsvhB9MdS6cZW/nOLDNRSksjFYZRw=
 github.com/coder/websocket v1.8.12 h1:5bUXkEPPIbewrnkU8LTCLVaxi4N4J8ahufH2vlo4NAo=
 github.com/coder/websocket v1.8.12/go.mod h1:LNVeNrXQZfe5qhS9ALED3uA+l5pPqvwXg3CKoDBB2gs=
-github.com/companyzero/gopus v0.0.1 h1:u84EXF3lZiWjUsKmf+0mShxsQF7dgZmkrlTAuoNjTOE=
-github.com/companyzero/gopus v0.0.1/go.mod h1:omndjAm61XYmtKSyBe3ulvpUNIEBwJazewUIVagmd9E=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
 github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 golang.org/x/crypto v0.31.0 h1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=

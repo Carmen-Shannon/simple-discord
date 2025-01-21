@@ -398,7 +398,6 @@ func handleReconnectEvent(s Session, p gateway.Payload) error {
 		if err := s.ReconnectSession(); err != nil {
 			return err
 		}
-		fmt.Println("RECONNECTED SESSION")
 	} else {
 		return errors.New("unexpected payload data type")
 	}

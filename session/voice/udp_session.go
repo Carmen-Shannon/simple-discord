@@ -119,8 +119,6 @@ func (u *udpSession) Connect() error {
 }
 
 func (u *udpSession) Exit() error {
-	u.cancel()
-	
 	if u.Conn != nil {
 		if err := u.Conn.Close(); err != nil {
 			if !errors.Is(err, net.ErrClosed) {
@@ -129,6 +127,7 @@ func (u *udpSession) Exit() error {
 		}
 	}
 
+	u.cancel()
 	close(u.readChan)
 	close(u.writeChan)
 	close(u.errorChan)
@@ -252,8 +251,9 @@ func (u *udpSession) handleRead() {
 		default:
 			n, err := u.Conn.Read(data)
 			if err != nil && !errors.Is(err, net.ErrClosed) {
-				fmt.Println(err)
 				u.errorChan <- fmt.Errorf("error reading from UDP connection: %v", err)
+				return
+			} else if errors.Is(err, net.ErrClosed) {
 				return
 			}
 

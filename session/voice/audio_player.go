@@ -2,7 +2,9 @@ package voice
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -20,26 +22,40 @@ type AudioPlayer interface {
 	SetVoiceSession(v VoiceSession)
 	Connect() error
 	Play(filepath string) error
+	Exit()
 }
 
 type audioPlayer struct {
-	mu           sync.Mutex
-	playing      bool
-	connected    bool
-	session      UdpSession
-	voiceSession VoiceSession
+	mu            *sync.Mutex
+	playing       bool
+	connected     bool
+	session       UdpSession
+	voiceSession  VoiceSession
+	audioResource Audio
+	ctx           context.Context
+	cancel        context.CancelFunc
 }
 
 var _ AudioPlayer = (*audioPlayer)(nil)
 
 func NewAudioPlayer() AudioPlayer {
-	return &audioPlayer{
-		mu:           sync.Mutex{},
-		playing:      false,
-		connected:    false,
-		session:      nil,
-		voiceSession: nil,
+	a := &audioPlayer{
+		mu:            &sync.Mutex{},
+		playing:       false,
+		connected:     false,
+		session:       nil,
+		voiceSession:  nil,
+		audioResource: NewAudio(),
 	}
+	a.ctx, a.cancel = context.WithCancel(context.Background())
+	return a
+}
+
+func (a *audioPlayer) Exit() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cancel()
+	*a = *NewAudioPlayer().(*audioPlayer)
 }
 
 // Connect requires a VoiceSession to be passed in order to connect to the UDP server, since forming a UDP connection is reliant on the voice gateway
@@ -84,20 +100,19 @@ func (a *audioPlayer) Play(path string) error {
 		return errors.New("already playing")
 	}
 
-	audio := NewAudio()
 	go func() {
-		if err := audio.RegisterFile(path); err != nil {
+		if err := a.audioResource.RegisterFile(path, a.cancel); err != nil {
 			return
 		}
 	}()
 
 	// Stream the encoded audio
-	go a.play(audio)
+	go a.play()
 
 	return nil
 }
 
-func (a *audioPlayer) play(audio Audio) {
+func (a *audioPlayer) play() {
 	if !a.IsPlaying() {
 		if err := a.voiceSession.Speaking(); err != nil {
 			a.session.GetSession().errorChan <- err
@@ -118,50 +133,54 @@ func (a *audioPlayer) play(audio Audio) {
 	frameDuration := 20 * time.Millisecond
 
 	go func() {
-		err := a.prepAudio(audio, packetChannel, sampleSize)
+		defer close(packetChannel)
+		err := a.prepAudio(a.audioResource, packetChannel, sampleSize)
 		if err != nil {
 			a.session.GetSession().errorChan <- err
-			close(packetChannel)
 			return
 		}
-		close(packetChannel)
 	}()
 
 	go func() {
+		defer close(done)
 		err := a.sendAudio(frameDuration, packetChannel)
 		if err != nil {
 			a.session.GetSession().errorChan <- err
-			close(done)
 			return
 		}
-		close(done)
 	}()
 
 	<-done
 
-	if err := a.voiceSession.Speaking(); err != nil {
-		a.session.GetSession().errorChan <- err
-		return
+	if a.IsConnected() {
+		if err := a.voiceSession.Speaking(); err != nil {
+			a.session.GetSession().errorChan <- err
+			return
+		}
+		time.Sleep(100 * time.Millisecond) // should be enough time for the speaking event to process before modifying the playing state
 	}
-
-	time.Sleep(100 * time.Millisecond) // should be enough time for the speaking event to process before modifying the playing state
 
 	a.mu.Lock()
 	a.playing = false
 	a.mu.Unlock()
+	a.audioResource = NewAudio()
 }
 
-func (a *audioPlayer) sendAudio(frameTime time.Duration, packetChan chan []byte) error {
+func (a *audioPlayer) sendAudio(frameTime time.Duration, receiveChan chan []byte) error {
 	ticker := time.NewTicker(frameTime)
 	defer ticker.Stop()
+	defer a.GetUdpSession().ResetSentData()
 	for {
 		select {
-		case <-a.GetUdpSession().GetSession().ctx.Done():
+		case <-a.ctx.Done():
+			fmt.Println("DONE SENDING AUDIO")
 			return nil
-		case msg, ok := <-packetChan:
+		case msg, ok := <-receiveChan:
 			if !ok {
+				fmt.Println("PACKET CHANNEL CLOSED")
 				return nil
 			} else if !a.IsConnected() {
+				fmt.Println("DISCONNECTED")
 				return nil
 			}
 
@@ -176,9 +195,6 @@ func (a *audioPlayer) sendAudio(frameTime time.Duration, packetChan chan []byte)
 }
 
 func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int) error {
-	// done channel
-	done := make(chan struct{})
-	var once sync.Once
 	// incrementals
 	var seq uint16
 	var timestamp uint32
@@ -209,13 +225,43 @@ func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int
 
 	for {
 		select {
-		case <-a.GetUdpSession().GetSession().ctx.Done():
-			once.Do(func() { close(done) })
+		case <-a.ctx.Done():
+			fmt.Println("DONE PREPPING AUDIO")
+			return nil
+		case <-sendChan:
+			fmt.Println("SEND CHAN CLOSED")
 			return nil
 		case encoded, ok := <-audio.GetStream():
 			if !ok {
-				once.Do(func() { close(done) })
-				break
+				fmt.Println("STREAM CLOSED")
+				for i := 0; i < 5; i++ {
+					select {
+					case <-a.GetUdpSession().GetSession().ctx.Done():
+						fmt.Println("DONE SENDING SILENCE FRAMES")
+						return nil
+					default:
+						rtpHeader.Seq = seq
+						rtpHeader.Timestamp = timestamp
+
+						packet, err := a.encryptAudio(silenceFrame, rtpHeader, encryptionMode, nonceCounter, secretKey)
+						if err != nil {
+							a.session.GetSession().errorChan <- err
+							return err
+						}
+
+						sendChan <- packet.Bytes()
+
+						// Increment the nonce counter, sequence, and timestamp
+						nonceCounter++
+						seq++
+						timestamp += uint32(frameSize)
+					}
+				}
+				fmt.Println("SUPER DONE SENDING SILENCE FRAMES")
+				return nil
+			} else if !a.IsConnected() {
+				fmt.Println("DISCONNECTED")
+				return nil
 			}
 			rtpHeader.Seq = seq
 			rtpHeader.Timestamp = timestamp
@@ -230,32 +276,6 @@ func (a *audioPlayer) prepAudio(audio Audio, sendChan chan []byte, frameSize int
 			nonceCounter++
 			seq++
 			timestamp += uint32(frameSize)
-		case <-done:
-		silenceLoop:
-			for i := 0; i < 5; i++ {
-				select {
-				case <-a.GetUdpSession().GetSession().ctx.Done():
-					break silenceLoop
-				default:
-					rtpHeader.Seq = seq
-					rtpHeader.Timestamp = timestamp
-
-					packet, err := a.encryptAudio(silenceFrame, rtpHeader, encryptionMode, nonceCounter, secretKey)
-					if err != nil {
-						a.session.GetSession().errorChan <- err
-						return err
-					}
-
-					sendChan <- packet.Bytes()
-
-					// Increment the nonce counter, sequence, and timestamp
-					nonceCounter++
-					seq++
-					timestamp += uint32(frameSize)
-				}
-			}
-			a.GetUdpSession().ResetSentData()
-			return nil
 		}
 	}
 }
@@ -329,7 +349,7 @@ func (a *audioPlayer) SetVoiceSession(v VoiceSession) {
 
 // Audio is meant to store the metadata and PCM audio
 type Audio interface {
-	RegisterFile(path string) error
+	RegisterFile(path string, cancel context.CancelFunc) error
 	RegisterStream()
 	GetMetadata() voice.AudioMetadata
 	GetStream() chan []byte
@@ -353,17 +373,15 @@ func NewAudio() Audio {
 
 // RegisterFile is a temporary function while I work on a more permanent solution, for now this will take a file path to any audio file (should in theory handle mp4 m4a etc) and process the audio into PCM.
 // The PCM data will be encoded per-frame to Opus frames and sent to the stream channel.
-func (a *audio) RegisterFile(path string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	metadata, err := ffmpeg.ConvertFileToOpus(path, true, a.stream)
+func (a *audio) RegisterFile(path string, cancel context.CancelFunc) error {
+	metadata, err := ffmpeg.ConvertFileToOpus(path, true, a.GetStream(), cancel)
 	if err != nil {
 		return errors.New("failed to convert file to Opus: " + err.Error())
 	}
 
+	a.mu.Lock()
 	a.metadata = *metadata
-	close(a.stream)
+	a.mu.Unlock()
 	return nil
 }
 

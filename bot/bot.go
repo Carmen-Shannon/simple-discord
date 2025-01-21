@@ -305,8 +305,6 @@ func (b *bot) run(stopChan chan struct{}) error {
 			} else {
 				fmt.Println("ffprobe process terminated successfully")
 			}
-		} else {
-			fmt.Println("ffprobe process is not running")
 		}
 	}
 	if ffmpeg.FfmpegCmd != nil && ffmpeg.FfmpegCmd.Process != nil {
@@ -317,8 +315,6 @@ func (b *bot) run(stopChan chan struct{}) error {
 			} else {
 				fmt.Println("ffmpeg process terminated successfully")
 			}
-		} else {
-			fmt.Println("ffmpeg process is not running")
 		}
 	}
 
@@ -326,9 +322,7 @@ func (b *bot) run(stopChan chan struct{}) error {
 	time.Sleep(2 * time.Second)
 
 	// Cleanup temporary ffmpeg binaries
-	if err := cleanupFFmpegBinaries(); err != nil {
-		fmt.Printf("error cleaning up ffmpeg binaries: %v\n", err)
-	}
+	cleanupFFmpegBinaries()
 
 	if err := b.exit(); err != nil {
 		close(stopChan)

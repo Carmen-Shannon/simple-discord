@@ -245,8 +245,6 @@ func (s *session) Exit() error {
 	}
 
 	s.cancel()
-
-	// Close the channels
 	close(s.readChan)
 	close(s.writeChan)
 	close(s.errorChan)
@@ -256,9 +254,8 @@ func (s *session) Exit() error {
 
 // when a session is disconnected but can be resumed for one of many reasons, use this
 func (s *session) ResumeSession() error {
-	if s.stopHeartbeat != nil {
-		close(s.stopHeartbeat)
-		s.stopHeartbeat = nil
+	if err := s.Exit(); err != nil {
+		return err
 	}
 
 	// open a new connection using the cached url
@@ -268,7 +265,6 @@ func (s *session) ResumeSession() error {
 	}
 	s.SetConn(ws)
 
-	s.cancel()
 	// Reinitialize the channels
 	s.ctx, s.cancel = context.WithCancel(context.Background())
 	s.helloReceived = make(chan struct{})
@@ -296,40 +292,19 @@ func (s *session) ResumeSession() error {
 
 // when a session is disconnected and can not be resumed, use this
 func (s *session) ReconnectSession() error {
-	if s.stopHeartbeat != nil {
-		close(s.stopHeartbeat)
-		s.stopHeartbeat = nil
+	if err := s.Exit(); err != nil {
+		return err
 	}
 
-	ws, err := s.dialer(nil, "/?v=10&encoding=json")
+	// need to retain the og event handler for custom listeners
+	eventHandler := s.GetEventHandler()
+	sess, err := NewSession(*s.GetToken(), s.GetIntents(), s.GetShard())
 	if err != nil {
 		return err
 	}
-	s.SetConn(ws)
+	sess.SetEventHandler(eventHandler)
 
-	// reinitialize the channels
-	s.helloReceived = make(chan struct{})
-	s.stopHeartbeat = make(chan struct{})
-	s.readChan = make(chan []byte)
-	s.writeChan = make(chan []byte, 4096)
-	s.errorChan = make(chan error)
-
-	// Start the goroutines to listen, read, write, and handle errors
-	go s.listen()
-	go s.handleRead()
-	go s.handleWrite()
-	go s.handleError()
-
-	<-s.helloReceived
-
-	var identifyData gateway_structs.Payload
-	identifyData.OpCode = gateway_structs.Identify
-
-	// let her rip tater chip
-	if err := s.EventHandler.HandleEvent(s, identifyData); err != nil {
-		return err
-	}
-
+	*s = *sess.GetSession()
 	return nil
 }
 
@@ -471,6 +446,38 @@ func (s *session) InteractionReply(interactionOptions structs.InteractionRespons
 	return <-done
 }
 
+func (s *session) sendMessage(messageOptions dto.MessageOptions) (*structs.Message, error) {
+	token := *s.GetToken()
+	reqDto, err := messageOptions.ConstructDtoFromOptions()
+	if err != nil {
+		return nil, err
+	}
+
+	message, err := requestutil.CreateMessage(*reqDto, token)
+	if err != nil {
+		return nil, err
+	}
+
+	return message, nil
+}
+
+func (s *session) sendInteractionReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
+	interactionID := interaction.ID.ToString()
+	interactionToken := interaction.Token
+	token := *s.GetToken()
+	reqDto := dto.CreateInteractionResponseDto{
+		WithResponse: util.ToPtr(true),
+	}
+	response := interactionOptions.InteractionResponse()
+	_, err := requestutil.CreateInteractionResponse(interactionID, interactionToken, token, reqDto, *response)
+	if err != nil {
+		return err
+	}
+
+	// Signal that the reply is complete
+	return nil
+}
+
 // listens for new messages sent to the readChan and parses them before submitting them to the EventHandler
 func (s *session) listen() {
 	for {
@@ -509,38 +516,6 @@ func (s *session) listen() {
 	}
 }
 
-func (s *session) sendMessage(messageOptions dto.MessageOptions) (*structs.Message, error) {
-	token := *s.GetToken()
-	reqDto, err := messageOptions.ConstructDtoFromOptions()
-	if err != nil {
-		return nil, err
-	}
-
-	message, err := requestutil.CreateMessage(*reqDto, token)
-	if err != nil {
-		return nil, err
-	}
-
-	return message, nil
-}
-
-func (s *session) sendInteractionReply(interactionOptions structs.InteractionResponseOptions, interaction *structs.Interaction) error {
-	interactionID := interaction.ID.ToString()
-	interactionToken := interaction.Token
-	token := *s.GetToken()
-	reqDto := dto.CreateInteractionResponseDto{
-		WithResponse: util.ToPtr(true),
-	}
-	response := interactionOptions.InteractionResponse()
-	_, err := requestutil.CreateInteractionResponse(interactionID, interactionToken, token, reqDto, *response)
-	if err != nil {
-		return err
-	}
-
-	// Signal that the reply is complete
-	return nil
-}
-
 // reads frames from the gateway in increments of 1024 bytes
 // dynamically resizes the buffer array to fit the full message and writes the message to the readChan
 func (s *session) handleRead() {
@@ -554,9 +529,17 @@ func (s *session) handleRead() {
 		default:
 			_, bytes, err := s.Conn.Read(s.ctx)
 			if err != nil {
-				if !errors.Is(err, net.ErrClosed) && !errors.As(err, &websocket.CloseError{}) {
-					s.errorChan <- fmt.Errorf("error reading from session websocket: %v", err)
+				if (websocket.CloseStatus(err) >= 4000 && websocket.CloseStatus(err) <= 4003) ||
+					(websocket.CloseStatus(err) >= 4005 && websocket.CloseStatus(err) <= 4009) {
+					if err := s.ReconnectSession(); err != nil {
+						s.errorChan <- fmt.Errorf("error reconnecting session: %v", err)
+						s.Exit()
+					}
+					return
+				} else if websocket.CloseStatus(err) == websocket.StatusNormalClosure || errors.Is(err, net.ErrClosed) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					return
 				}
+				s.errorChan <- fmt.Errorf("error reading from session websocket: %v", err)
 				return
 			}
 
@@ -601,45 +584,27 @@ func (s *session) handleRead() {
 }
 
 // reads from the writeChan and writes the message to the gateway
-// has a retry mechanism with a delay of 2 seconds
-// after 3 retries, give up and go home
 func (s *session) handleWrite() {
-	retryCount := 0
-	maxRetries := 3
-	retryDelay := time.Second * 2
-
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
 		case data := <-s.writeChan:
-			for {
-				var msg json.RawMessage
-				if err := json.Unmarshal(data, &msg); err != nil {
-					s.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
-					break
-				}
-				if err := wsjson.Write(s.ctx, s.GetConn(), msg); err != nil {
-					if retryCount < maxRetries {
-						retryCount++
-						log.Printf("write error: %v, retrying %d/%d", err, retryCount, maxRetries)
-						time.Sleep(retryDelay)
-						continue
-					} else {
-						s.errorChan <- fmt.Errorf("write error after %d retries: %v", maxRetries, err)
-						if err := s.ReconnectSession(); err != nil {
-							s.errorChan <- fmt.Errorf("error resuming session: %v", err)
-							s.Exit()
-							break
-						}
-						return
-					}
-				}
-				retryCount = 0 // Reset retry count on successful write
+			var msg json.RawMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				s.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
 				break
 			}
 
+			if err := wsjson.Write(s.ctx, s.GetConn(), msg); err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return
+				}
+				s.errorChan <- fmt.Errorf("write error: %v", err)
+				return
+			}
 		}
+
 	}
 }
 

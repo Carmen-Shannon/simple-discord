@@ -23,6 +23,9 @@ func NewSnowflake(id uint64) *Snowflake {
 }
 
 func (s *Snowflake) Equals(other Snowflake) bool {
+	if s == nil {
+		return false
+	}
 	return s.ID == other.ID
 }
 

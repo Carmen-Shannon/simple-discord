@@ -228,6 +228,7 @@ func (v *voiceSession) ResumeSession() error {
 	v.GetAudioPlayer().SetUdpSession(NewUdpSession())
 	v.GetAudioPlayer().SetVoiceSession(v)
 	v.SetConnected(true)
+	fmt.Println("resumed voice session")
 	return nil
 }
 
@@ -241,6 +242,7 @@ func (v *voiceSession) Exit() error {
 		if err := v.GetAudioPlayer().GetUdpSession().Exit(); err != nil {
 			v.errorChan <- fmt.Errorf("error closing udp session: %v", err)
 		}
+		v.GetAudioPlayer().Exit()
 	}
 
 	if v.GetConnected() {
@@ -252,7 +254,6 @@ func (v *voiceSession) Exit() error {
 	}
 
 	v.cancel()
-
 	close(v.readChan)
 	close(v.writeChan)
 	close(v.errorChan)
@@ -338,7 +339,13 @@ func (v *voiceSession) handleRead() {
 		default:
 			_, bytes, err := v.Conn.Read(v.ctx)
 			if err != nil {
-				if websocket.CloseStatus(err) == websocket.StatusNormalClosure || websocket.CloseStatus(err) == 4014 || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+				if websocket.CloseStatus(err) == 4015 {
+					if err = v.ResumeSession(); err != nil {
+						fmt.Println("error resuming voice session:", err)
+						v.Exit()
+					}
+					return
+				} else if websocket.CloseStatus(err) == websocket.StatusNormalClosure || websocket.CloseStatus(err) == 4014 || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 					return
 				}
 				v.errorChan <- fmt.Errorf("error reading from voice websocket: %v", err)
@@ -407,48 +414,24 @@ func (v *voiceSession) handleRead() {
 	}
 }
 
-// has a retry mechanism with a delay of 2 seconds
-// after 3 retries, give up and go home
 func (v *voiceSession) handleWrite() {
-	retryCount := 0
-	maxRetries := 3
-	retryDelay := time.Second * 2
-
 	for {
 		select {
 		case <-v.ctx.Done():
 			return
 		case data := <-v.writeChan:
-			for {
-				var msg json.RawMessage
-				if err := json.Unmarshal(data, &msg); err != nil {
-					v.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
-					break
-				}
+			var msg json.RawMessage
+			if err := json.Unmarshal(data, &msg); err != nil {
+				v.errorChan <- fmt.Errorf("error unmarshalling data: %v", err)
+				continue
+			}
 
-				if err := wsjson.Write(v.ctx, v.Conn, msg); err != nil {
-					if errors.Is(err, net.ErrClosed) {
-						v.Exit()
-						return
-					}
-					if retryCount < maxRetries {
-						retryCount++
-						log.Printf("write error: %v, retrying %d/%d", err, retryCount, maxRetries)
-						time.Sleep(retryDelay)
-						continue
-					} else {
-						v.errorChan <- fmt.Errorf("write error after %d retries: %v", maxRetries, err)
-						// TODO: implement reconnect logic
-						// if err := s.ReconnectSession(); err != nil {
-						//     s.errorChan <- fmt.Errorf("error resuming session: %v", err)
-						//     s.Exit()
-						//     break
-						// }
-						return
-					}
+			if err := wsjson.Write(v.ctx, v.Conn, msg); err != nil {
+				if errors.Is(err, net.ErrClosed) {
+					return
 				}
-				retryCount = 0 // Reset retry count on successful write
-				break
+				v.errorChan <- fmt.Errorf("write error: %v", err)
+				return
 			}
 		}
 	}

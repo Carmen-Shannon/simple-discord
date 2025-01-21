@@ -3,6 +3,7 @@ package ffmpeg
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"embed"
 	"encoding/binary"
 	"encoding/json"
@@ -15,8 +16,8 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/Carmen-Shannon/gopus"
 	"github.com/Carmen-Shannon/simple-discord/structs/voice"
-	"github.com/companyzero/gopus"
 )
 
 //go:embed linux/ffmpeg linux/ffmpeg-arm windows/ffmpeg.exe macos/ffmpeg
@@ -105,7 +106,7 @@ func resolvePath(inputPath string) (string, error) {
 	return absPath, nil
 }
 
-func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan []byte) (*voice.AudioMetadata, error) {
+func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan []byte, cancel context.CancelFunc) (*voice.AudioMetadata, error) {
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ffmpeg path: %w", err)
@@ -162,28 +163,50 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	opusEncoder.SetBitrate(96000)
 	opusEncoder.SetVbr(false)
 
-	// Encode PCM to Opus per-frame
-	for {
-		audiobuf := make([]int16, frameSize*channels)
-		err = binary.Read(ffmpegBuf, binary.LittleEndian, &audiobuf)
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("error reading from ffmpeg stdout: %w", err)
-		}
+	go func() {
+		defer FfmpegCmd.Process.Kill()
+		defer func() {
+			if r := recover(); r != nil {
+				if r == "send on closed channel" {
+					return
+				} else {
+					fmt.Println(r)
+				}
+			}
+		}()
+		for {
+			select {
+			case <-outputChan:
+				fmt.Println("CANCELLING FROM OUTPUT CHAN")
+				return
+			default:
+				audiobuf := make([]int16, frameSize*channels)
+				err = binary.Read(ffmpegBuf, binary.LittleEndian, &audiobuf)
+				if err == io.EOF || err == io.ErrUnexpectedEOF {
+					close(outputChan)
+					fmt.Println("CLOSING OUTPUT CHAN")
+					break
+				}
+				if err != nil {
+					fmt.Println("Error reading from ffmpeg stdout:", err)
+					cancel()
+					return
+				}
 
-		// Encode PCM to Opus
-		out := make([]byte, maxBytes)
-		out, err := opusEncoder.Encode(audiobuf, frameSize, out)
-		if err != nil {
-			return nil, fmt.Errorf("failed to encode PCM to Opus: %w", err)
+				// Encode PCM to Opus
+				out := make([]byte, maxBytes)
+				out, err := opusEncoder.Encode(audiobuf, frameSize, out)
+				if err != nil {
+					fmt.Println("Error encoding PCM to Opus:", err)
+					cancel()
+					return
+				}
+
+				outputChan <- out
+			}
 		}
+	}()
 
-		outputChan <- out
-	}
-
-	// Return the metadata
 	return metadata, nil
 }
 

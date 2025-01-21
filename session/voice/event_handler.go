@@ -409,7 +409,6 @@ func handleVoiceResumedEvent(s VoiceSession, p voice.VoicePayload) error {
 func handleVoiceClientsConnectEvent(s VoiceSession, p voice.VoicePayload) error {
 	fmt.Println("HANDLING VOICE CLIENTS CONNECT EVENT")
 	if _, ok := p.Data.(receiveevents.VoiceClientsConnectEvent); ok {
-		// fmt.Println(event)
 	} else {
 		return errors.New("unexpected payload data type")
 	}
