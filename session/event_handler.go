@@ -378,13 +378,15 @@ func handlePresenceUpdateEvent(s Session, p gateway.Payload) error {
 func handleInvalidSessionEvent(s Session, p gateway.Payload) error {
 	if invalidSessionEvent, ok := p.Data.(receiveevents.InvalidSessionEvent); ok {
 		if invalidSessionEvent {
+			if err := s.ResumeSession(); err != nil {
+				return err
+			}
+			fmt.Println("RESUMED SESSION")
+		} else {
 			if err := s.ReconnectSession(); err != nil {
 				return err
 			}
 			fmt.Println("RECONNECTED SESSION")
-		} else {
-			s.Exit()
-			fmt.Println("SESSION ENDED")
 		}
 	} else {
 		return errors.New("unexpected payload data type")
@@ -395,7 +397,7 @@ func handleInvalidSessionEvent(s Session, p gateway.Payload) error {
 
 func handleReconnectEvent(s Session, p gateway.Payload) error {
 	if _, ok := p.Data.(receiveevents.ReconnectEvent); ok {
-		if err := s.ReconnectSession(); err != nil {
+		if err := s.ResumeSession(); err != nil {
 			return err
 		}
 	} else {

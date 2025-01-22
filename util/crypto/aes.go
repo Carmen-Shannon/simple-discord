@@ -11,7 +11,7 @@ import (
 func EncryptAESGCM(plaintext, key []byte, rtpHeader []byte, nonce uint32) ([]byte, error) {
 	// Convert the 32-bit incremental nonce value into a 12-byte slice
 	nonceBuffer := make([]byte, 12)
-    binary.BigEndian.PutUint32(nonceBuffer[:4], nonce)
+	binary.BigEndian.PutUint32(nonceBuffer[:4], nonce)
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -27,20 +27,20 @@ func EncryptAESGCM(plaintext, key []byte, rtpHeader []byte, nonce uint32) ([]byt
 	ciphertext := aesgcm.Seal(nil, nonceBuffer, plaintext, rtpHeader)
 
 	// Create a buffer to hold the final packet
-    headerSize := len(rtpHeader)
-    packetSize := headerSize + len(ciphertext) + 4 // 4 bytes for the nonce padding
-    packet := make([]byte, packetSize)
+	headerSize := len(rtpHeader)
+	packetSize := headerSize + len(ciphertext) + 4 // 4 bytes for the nonce padding
+	packet := make([]byte, packetSize)
 
-    // Copy the RTP header to the packet
-    copy(packet, rtpHeader)
+	// Copy the RTP header to the packet
+	copy(packet, rtpHeader)
 
-    // Copy the encrypted data to the packet
-    copy(packet[headerSize:], ciphertext)
+	// Copy the encrypted data to the packet
+	copy(packet[headerSize:], ciphertext)
 
-    // Copy the first 4 bytes of the nonce to the end of the packet
-    copy(packet[headerSize+len(ciphertext):], nonceBuffer[:4])
+	// Copy the first 4 bytes of the nonce to the end of the packet
+	copy(packet[headerSize+len(ciphertext):], nonceBuffer[:4])
 
-    return packet, nil
+	return packet, nil
 }
 
 // DecryptAESGCM decrypts the ciphertext using AES-GCM and uses the RTP header as the nonce
