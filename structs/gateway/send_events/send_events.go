@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Carmen-Shannon/simple-discord/structs"
-	"github.com/Carmen-Shannon/simple-discord/structs/voice"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 )
 
 type IdentifyProperties struct {
@@ -38,14 +38,14 @@ type VoiceIdentifyEvent struct {
 type VoiceSelectProtocolEvent struct {
 	Protocol            string                  `json:"protocol"`
 	Data                VoiceSelectProtocolData `json:"data"`
-	Codecs              []voice.Codec           `json:"codecs"`
+	Codecs              []structs.Codec         `json:"codecs"`
 	DaveProtocolVersion *int                    `json:"dave_protocol_version,omitempty"`
 }
 
 type VoiceSelectProtocolData struct {
-	Address string                        `json:"address"`
-	Port    int                           `json:"port"`
-	Mode    voice.TransportEncryptionMode `json:"mode"`
+	Address string                          `json:"address"`
+	Port    int                             `json:"port"`
+	Mode    gateway.TransportEncryptionMode `json:"mode"`
 }
 
 type SpeakingEvent struct {
@@ -65,7 +65,7 @@ type VoiceDaveReadyForTransitionEvent struct {
 
 type VoiceDaveMlsKeyPackageEvent struct {
 	OpCode     uint8
-	MLSMessage voice.KeyPackage
+	MLSMessage structs.KeyPackage
 }
 
 func (v *VoiceDaveMlsKeyPackageEvent) UnmarshalBinary(data []byte) error {
@@ -114,7 +114,7 @@ func (v *VoiceDaveMlsKeyPackageEvent) MarshalBinary() ([]byte, error) {
 
 type VoiceDaveMlsCommitWelcomeEvent struct {
 	OpCode     uint8
-	MLSMessage voice.Commit
+	MLSMessage structs.Commit
 }
 
 func (v *VoiceDaveMlsCommitWelcomeEvent) UnmarshalBinary(data []byte) error {

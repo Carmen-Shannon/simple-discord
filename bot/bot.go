@@ -10,20 +10,20 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Carmen-Shannon/simple-discord/session"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway/session"
 	"github.com/Carmen-Shannon/simple-discord/structs"
 	"github.com/Carmen-Shannon/simple-discord/util/ffmpeg"
 )
 
 type Bot interface {
-	GetSession(shardID int) (session.Session, error)
-	GetSessionByGuildID(guildID structs.Snowflake) session.Session
+	GetSession(shardID int) (session.ClientSession, error)
+	GetSessionByGuildID(guildID structs.Snowflake) session.ClientSession
 	RegisterCommands(commands map[string]session.CommandFunc)
 	RegisterListeners(listeners map[session.Listener]session.CommandFunc)
 }
 
 type bot struct {
-	sessions map[int]session.Session
+	sessions map[int]session.ClientSession
 	mu       sync.RWMutex
 }
 
@@ -52,17 +52,30 @@ var _ Bot = (*bot)(nil)
 //	}
 //	<-stopChan
 func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error) {
-	initialSession, err := session.NewSession(token, intents, nil)
-	if err != nil {
-		return nil, nil, err
+	b := &bot{
+		sessions: make(map[int]session.ClientSession),
 	}
 
-	b := &bot{
-		sessions: make(map[int]session.Session),
+	initialSession := session.NewClientSession()
+	initialSession.SetToken(token)
+	initialSession.SetIntents(intents...)
+	initialSession.SetShard(0)
+	if err := initialSession.Dial(true); err != nil {
+		return nil, nil, err
 	}
+	initialSession.SetCb(b.reconnectCb)
 
 	shards := *initialSession.GetShards()
 	maxConcurrency := *initialSession.GetMaxConcurrency()
+
+
+	// initialSession := session.NewSession(token, intents, nil)
+	// if err := initialSession.Connect(true); err != nil {
+	// 	return nil, nil, err
+	// }
+	// initialSession.SetReconnectCb(b.reconnectCb)
+	// shards := *initialSession.GetShards()
+	// maxConcurrency := *initialSession.GetMaxConcurrency()
 
 	// Add the initial session to the sessions map
 	b.sessions[*initialSession.GetShard()] = initialSession
@@ -74,12 +87,16 @@ func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error
 		}
 
 		shardID := i
-		sess, err := session.NewSession(token, intents, &shardID)
-		if err != nil {
+		sess := session.NewClientSession()
+		sess.SetToken(token)
+		sess.SetIntents(intents...)
+		sess.SetShard(shardID)
+		sess.SetShards(shards)
+		sess.SetCb(b.reconnectCb)
+		if err := sess.Dial(false); err != nil {
 			return nil, nil, err
 		}
-		sess.SetShard(&shardID)
-		sess.SetShards(&shards)
+
 		b.sessions[shardID] = sess
 	}
 
@@ -99,7 +116,7 @@ func (b *bot) exit() error {
 	defer b.mu.Unlock()
 
 	for _, session := range b.sessions {
-		if err := session.Exit(); err != nil {
+		if err := session.Exit(true); err != nil {
 			return err
 		}
 		fmt.Println("Shutting down session with shard ID:", *session.GetShard())
@@ -132,7 +149,7 @@ func (b *bot) exit() error {
 //	if err != nil {
 //	    log.Fatalf("error sending message: %v", err)
 //	}
-func (b *bot) GetSession(shardID int) (session.Session, error) {
+func (b *bot) GetSession(shardID int) (session.ClientSession, error) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -160,11 +177,12 @@ func (b *bot) GetSession(shardID int) (session.Session, error) {
 //	if session == nil {
 //	    log.Fatalf("session not found for guild ID")
 //	}
-func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) session.Session {
+func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) session.ClientSession {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
 	for _, session := range b.sessions {
+
 		if session.GetServerByGuildID(guildID) != nil {
 			return session
 		}
@@ -330,6 +348,18 @@ func (b *bot) run(stopChan chan struct{}) error {
 	}
 
 	close(stopChan)
+	return nil
+}
+
+func (b *bot) reconnectCb(sess session.ClientSession) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if sess.GetShard() == nil {
+		return fmt.Errorf("session shard ID is nil")
+	}
+
+	b.sessions[*sess.GetShard()] = sess
 	return nil
 }
 

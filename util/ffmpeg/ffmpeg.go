@@ -2,22 +2,18 @@ package ffmpeg
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"embed"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"sync"
 
 	"github.com/Carmen-Shannon/gopus"
-	"github.com/Carmen-Shannon/simple-discord/structs/voice"
 )
 
 //go:embed linux/ffmpeg linux/ffmpeg-arm windows/ffmpeg.exe macos/ffmpeg
@@ -106,26 +102,26 @@ func resolvePath(inputPath string) (string, error) {
 	return absPath, nil
 }
 
-func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan []byte, cancel context.CancelFunc) (*voice.AudioMetadata, error) {
+func ConvertFileToOpus(inputPath string, outputChan chan []byte, ctx context.Context) error {
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get ffmpeg path: %w", err)
+		return fmt.Errorf("failed to get ffmpeg path: %w", err)
 	}
 
 	// Resolve the input path
 	absInputPath, err := resolvePath(inputPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve input path: %w", err)
+		return fmt.Errorf("failed to resolve input path: %w", err)
 	}
 
 	// Extract metadata from the original file
-	var metadata *voice.AudioMetadata
-	if preserveMetadata {
-		metadata, err = GetOpusMetadataFromFile(absInputPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get metadata: %w", err)
-		}
-	}
+	// var metadata *voice.AudioMetadata
+	// if preserveMetadata {
+	// 	metadata, err = GetOpusMetadataFromFile(absInputPath)
+	// 	if err != nil {
+	// 		return nil, fmt.Errorf("failed to get metadata: %w", err)
+	// 	}
+	// }
 
 	// Create a shell command to run FFmpeg to convert MP3 to raw PCM
 	FfmpegCmd = exec.Command(
@@ -139,7 +135,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	)
 	ffmpegOut, err := FfmpegCmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
 	ffmpegBuf := bufio.NewReaderSize(ffmpegOut, 16384)
@@ -147,7 +143,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	// Start the FFmpeg command
 	err = FfmpegCmd.Start()
 	if err != nil {
-		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
+		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
 	// Define frame size and channels
@@ -158,7 +154,7 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 	// Create Opus encoder
 	opusEncoder, err := gopus.NewEncoder(48000, 2, gopus.Audio)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Opus encoder: %w", err)
+		return fmt.Errorf("failed to create Opus encoder: %w", err)
 	}
 	opusEncoder.SetBitrate(96000)
 	opusEncoder.SetVbr(false)
@@ -174,22 +170,25 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 				}
 			}
 		}()
+		defer close(outputChan)
+
 		for {
 			select {
-			case <-outputChan:
-				fmt.Println("CANCELLING FROM OUTPUT CHAN")
+			case <-ctx.Done():
+				return
+			case _, ok := <-outputChan:
+				if !ok {
+					return
+				}
 				return
 			default:
 				audiobuf := make([]int16, frameSize*channels)
 				err = binary.Read(ffmpegBuf, binary.LittleEndian, &audiobuf)
 				if err == io.EOF || err == io.ErrUnexpectedEOF {
-					close(outputChan)
-					fmt.Println("CLOSING OUTPUT CHAN")
-					break
+					return
 				}
 				if err != nil {
 					fmt.Println("Error reading from ffmpeg stdout:", err)
-					cancel()
 					return
 				}
 
@@ -198,123 +197,126 @@ func ConvertFileToOpus(inputPath string, preserveMetadata bool, outputChan chan 
 				out, err := opusEncoder.Encode(audiobuf, frameSize, out)
 				if err != nil {
 					fmt.Println("Error encoding PCM to Opus:", err)
-					cancel()
 					return
 				}
 
-				outputChan <- out
+				select {
+				case <-ctx.Done():
+					return
+				case outputChan <- out:
+				}
 			}
 		}
 	}()
 
-	return metadata, nil
+	return nil
 }
 
-func GetOpusMetadataFromBytes(input []byte) (*voice.AudioMetadata, error) {
-	ffprobePath, err := getFFprobePath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
-	}
+// func GetOpusMetadataFromBytes(input []byte) (*voice.AudioMetadata, error) {
+// 	ffprobePath, err := getFFprobePath()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
+// 	}
 
-	ffmpegCmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", "pipe:0")
-	ffmpegCmd.Stdin = bytes.NewReader(input)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	ffmpegCmd.Stdout = &out
-	ffmpegCmd.Stderr = &stderr
-	err = ffmpegCmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
-	}
+// 	ffmpegCmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", "pipe:0")
+// 	ffmpegCmd.Stdin = bytes.NewReader(input)
+// 	var out bytes.Buffer
+// 	var stderr bytes.Buffer
+// 	ffmpegCmd.Stdout = &out
+// 	ffmpegCmd.Stderr = &stderr
+// 	err = ffmpegCmd.Run()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
+// 	}
 
-	var metadata struct {
-		Format struct {
-			Duration string `json:"duration"`
-			BitRate  string `json:"bit_rate"`
-		} `json:"format"`
-		Streams []struct {
-			SampleRate string `json:"sample_rate"`
-			Channels   int    `json:"channels"`
-		} `json:"streams"`
-	}
+// 	var metadata struct {
+// 		Format struct {
+// 			Duration string `json:"duration"`
+// 			BitRate  string `json:"bit_rate"`
+// 		} `json:"format"`
+// 		Streams []struct {
+// 			SampleRate string `json:"sample_rate"`
+// 			Channels   int    `json:"channels"`
+// 		} `json:"streams"`
+// 	}
 
-	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-	}
+// 	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
+// 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+// 	}
 
-	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse duration: %w", err)
-	}
+// 	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse duration: %w", err)
+// 	}
 
-	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
-	}
+// 	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
+// 	}
 
-	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
-	}
+// 	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
+// 	}
 
-	return &voice.AudioMetadata{
-		DurationMs: duration * 1000, // Convert to milliseconds
-		Bitrate:    bitrate,
-		SampleRate: sampleRate,
-		Channels:   metadata.Streams[0].Channels,
-	}, nil
-}
+// 	return &voice.AudioMetadata{
+// 		DurationMs: duration * 1000, // Convert to milliseconds
+// 		Bitrate:    bitrate,
+// 		SampleRate: sampleRate,
+// 		Channels:   metadata.Streams[0].Channels,
+// 	}, nil
+// }
 
-func GetOpusMetadataFromFile(filePath string) (*voice.AudioMetadata, error) {
-	ffprobePath, err := getFFprobePath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
-	}
+// func GetOpusMetadataFromFile(filePath string) (*voice.AudioMetadata, error) {
+// 	ffprobePath, err := getFFprobePath()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
+// 	}
 
-	FfprobeCmd = exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", filePath)
-	var out bytes.Buffer
-	var stderr bytes.Buffer
-	FfprobeCmd.Stdout = &out
-	FfprobeCmd.Stderr = &stderr
-	err = FfprobeCmd.Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
-	}
+// 	FfprobeCmd = exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", filePath)
+// 	var out bytes.Buffer
+// 	var stderr bytes.Buffer
+// 	FfprobeCmd.Stdout = &out
+// 	FfprobeCmd.Stderr = &stderr
+// 	err = FfprobeCmd.Run()
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
+// 	}
 
-	var metadata struct {
-		Format struct {
-			Duration string `json:"duration"`
-			BitRate  string `json:"bit_rate"`
-		} `json:"format"`
-		Streams []struct {
-			SampleRate string `json:"sample_rate"`
-			Channels   int    `json:"channels"`
-		} `json:"streams"`
-	}
+// 	var metadata struct {
+// 		Format struct {
+// 			Duration string `json:"duration"`
+// 			BitRate  string `json:"bit_rate"`
+// 		} `json:"format"`
+// 		Streams []struct {
+// 			SampleRate string `json:"sample_rate"`
+// 			Channels   int    `json:"channels"`
+// 		} `json:"streams"`
+// 	}
 
-	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
-		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-	}
+// 	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
+// 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+// 	}
 
-	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse duration: %w", err)
-	}
+// 	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse duration: %w", err)
+// 	}
 
-	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
-	}
+// 	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
+// 	}
 
-	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
-	}
+// 	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
+// 	}
 
-	return &voice.AudioMetadata{
-		DurationMs: duration * 1000, // Convert to milliseconds
-		Bitrate:    bitrate,
-		SampleRate: sampleRate,
-		Channels:   metadata.Streams[0].Channels,
-	}, nil
-}
+// 	return &voice.AudioMetadata{
+// 		DurationMs: duration * 1000, // Convert to milliseconds
+// 		Bitrate:    bitrate,
+// 		SampleRate: sampleRate,
+// 		Channels:   metadata.Streams[0].Channels,
+// 	}, nil
+// }

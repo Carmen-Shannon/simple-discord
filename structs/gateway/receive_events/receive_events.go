@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	structs "github.com/Carmen-Shannon/simple-discord/structs"
-	"github.com/Carmen-Shannon/simple-discord/structs/voice"
+	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 )
 
 // TODO: finish this struct and the other receive event binary structs
@@ -44,11 +44,11 @@ type HeartbeatACKEvent struct {
 }
 
 type VoiceReadyEvent struct {
-	SSRC              int                             `json:"ssrc"`
-	IP                string                          `json:"ip"`
-	Port              int                             `json:"port"`
-	Modes             []voice.TransportEncryptionMode `json:"modes"`
-	HeartbeatInterval int64                           `json:"heartbeat_interval"` // Ignore this field, it is not accurate
+	SSRC              int                               `json:"ssrc"`
+	IP                string                            `json:"ip"`
+	Port              int                               `json:"port"`
+	Modes             []gateway.TransportEncryptionMode `json:"modes"`
+	HeartbeatInterval int64                             `json:"heartbeat_interval"` // Ignore this field, it is not accurate
 }
 
 type VoiceResumedEvent struct{}
@@ -76,8 +76,8 @@ type SpeakingEvent struct {
 }
 
 type VoiceSessionDescriptionEvent struct {
-	Mode      voice.TransportEncryptionMode `json:"mode"`
-	SecretKey [32]byte                      `json:"secret_key"`
+	Mode      gateway.TransportEncryptionMode `json:"mode"`
+	SecretKey [32]byte                        `json:"secret_key"`
 }
 
 type ReadyEvent struct {
@@ -90,11 +90,7 @@ type ReadyEvent struct {
 	Application      structs.Application        `json:"application"`
 }
 
-type ResumedEvent struct {
-	Token     string `json:"token"`
-	SessionID string `json:"session_id"`
-	Seq       int    `json:"seq"`
-}
+type ResumedEvent struct{}
 
 type ReconnectEvent struct{}
 
