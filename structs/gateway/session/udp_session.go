@@ -84,6 +84,9 @@ func NewUdpSession() UdpSession {
 	u.SetPayloadDecoders(&payload.DiscoveryPacket{}, &payload.VoicePacket{})
 	u.SetEventDecoders(&payload.DiscoveryPacket{}, &payload.VoicePacket{}, &payload.SenderReportPacket{})
 	u.SetErrorHandlers(map[error]func(){
+		net.ErrClosed: func() {
+			u.Exit(false)
+		},
 		io.EOF: func() {
 			u.Exit(false)
 		},

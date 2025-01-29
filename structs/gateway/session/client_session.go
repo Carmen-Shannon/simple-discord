@@ -291,10 +291,13 @@ func (s *clientSession) Send(messageOptions dto.MessageOptions, response bool) (
 func (s *clientSession) JoinVoice(guildID, channelID structs.Snowflake) error {
 	vs := s.GetVoiceSession(guildID)
 	if vs == nil {
-		vs = NewVoiceSession()
+		vs = NewVoiceSession(s.vsCleanup(guildID))
+		s.AddVoiceSession(guildID, vs)
+	} else if !vs.IsConnected() {
+		vs = NewVoiceSession(s.vsCleanup(guildID))
 		s.AddVoiceSession(guildID, vs)
 	} else if vs.IsConnected() {
-		return nil
+		return errors.New("already connected to the voice channel")
 	}
 
 	vs.SetBotData(*s.GetBotData())
@@ -779,5 +782,11 @@ func (s *clientSession) reconnectFunc() func() {
 			s.Error(err)
 			s.Exit(false)
 		}
+	}
+}
+
+func (s *clientSession) vsCleanup(guildID structs.Snowflake) func() {
+	return func() {
+		delete(s.voiceSessions, guildID.ToString())
 	}
 }

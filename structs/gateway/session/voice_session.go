@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -11,6 +12,7 @@ import (
 	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
 	"github.com/Carmen-Shannon/simple-discord/structs/gateway/payload"
 	receiveevents "github.com/Carmen-Shannon/simple-discord/structs/gateway/receive_events"
+	sendevents "github.com/Carmen-Shannon/simple-discord/structs/gateway/send_events"
 	"github.com/coder/websocket"
 )
 
@@ -38,6 +40,8 @@ type voiceSession struct {
 
 	audioPlayer  AudioPlayer
 	eventHandler *voiceEventHandler
+
+	cleanupFunc func()
 
 	closeGroup    structs.SyncGroup
 	connectReady  chan struct{}
@@ -79,11 +83,12 @@ type VoiceSession interface {
 
 var _ VoiceSession = (*voiceSession)(nil)
 
-func NewVoiceSession() VoiceSession {
+func NewVoiceSession(cleanupFunc func()) VoiceSession {
 	vs := &voiceSession{
 		mu:            &sync.Mutex{},
 		Session:       NewSession(),
 		eventHandler:  NewEventHandler[voiceEventHandler](),
+		cleanupFunc:   cleanupFunc,
 		closeGroup:    *structs.NewSyncGroup(),
 		connectReady:  make(chan struct{}),
 		resumeReady:   make(chan struct{}),
@@ -132,7 +137,16 @@ func (v *voiceSession) Exit(graceful bool) error {
 		v.audioPlayer.Exit()
 	}
 
-	return v.Session.Exit(graceful)
+	if err := v.Session.Exit(graceful); err != nil {
+		return err
+	}
+
+	v.mu.Lock()
+	v.connected = false
+	v.mu.Unlock()
+
+	v.cleanupFunc()
+	return nil
 }
 
 func (v *voiceSession) Connect() error {
@@ -333,15 +347,35 @@ func (v *voiceSession) identify() error {
 	return nil
 }
 
-func (v *voiceSession) speaking() error {
+func (v *voiceSession) speaking(state bool) error {
+	var speakingEvent sendevents.SpeakingEvent
+	ssrc := v.GetAudioPlayer().GetSession().GetUdpData().SSRC
+	if !state {
+		speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
+			Speaking: structs.Bitfield[structs.SpeakingFlag]{},
+			Delay:    0,
+			SSRC:     &ssrc,
+		}
+	} else {
+		speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
+			Speaking: structs.Bitfield[structs.SpeakingFlag]{structs.SpeakingFlagMicrophone},
+			Delay:    0,
+			SSRC:     &ssrc,
+		}
+	}
 	sp := &payload.VoicePayload{
 		OpCode: gateway.VoiceOpSpeaking,
-		Data:   nil,
+		Data:   &speakingEvent,
+		Seq:    v.GetSequence(),
 	}
 
-	if err := v.eventHandler.HandleEvent(v, sp); err != nil {
+	bytes, err := sp.Marshal()
+	if err != nil {
 		return err
 	}
+
+	fmt.Println(string(bytes))
+	v.Write(bytes, false)
 	return nil
 }
 

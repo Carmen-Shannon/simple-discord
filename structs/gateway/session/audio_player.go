@@ -20,7 +20,7 @@ type audioPlayer struct {
 
 	session UdpSession
 
-	speakingFunc       func() error
+	speakingFunc       func(bool) error
 	selectProtocolFunc func() error
 
 	connected bool
@@ -38,7 +38,7 @@ type AudioPlayer interface {
 	GetSession() UdpSession
 }
 
-func NewAudioPlayer(speakingFunc, selectProtocolFunc func() error) AudioPlayer {
+func NewAudioPlayer(speakingFunc func(bool) error, selectProtocolFunc func() error) AudioPlayer {
 	a := &audioPlayer{
 		mu:                 &sync.Mutex{},
 		session:            NewUdpSession(),
@@ -51,10 +51,12 @@ func NewAudioPlayer(speakingFunc, selectProtocolFunc func() error) AudioPlayer {
 }
 
 func (a *audioPlayer) Play(path string) error {
-	if !a.connected {
+	if !a.IsConnected() {
 		if err := a.Connect(); err != nil {
 			return err
 		}
+	} else if a.IsPlaying() {
+		return errors.New("audio is already playing")
 	}
 
 	go func() {
@@ -74,10 +76,6 @@ func (a *audioPlayer) Connect() error {
 		return err
 	}
 
-	a.mu.Lock()
-	a.connected = true
-	a.mu.Unlock()
-
 	if err := a.session.Discover(); err != nil {
 		return err
 	}
@@ -88,8 +86,6 @@ func (a *audioPlayer) Connect() error {
 	case <-a.session.GetDiscoveryReady():
 	}
 
-	go a.session.KeepAlive()
-
 	if err := a.selectProtocolFunc(); err != nil {
 		return err
 	}
@@ -99,13 +95,24 @@ func (a *audioPlayer) Connect() error {
 		return nil
 	case <-a.session.GetSpeakingReady():
 	}
+
+	go a.session.KeepAlive()
+	a.mu.Lock()
+	a.connected = true
+	a.mu.Unlock()
 	return nil
 }
 
 func (a *audioPlayer) Exit() {
 	defer a.cancel()
-	a.audioResource.Exit()
-	a.session.Exit(true)
+	defer a.audioResource.Exit()
+
+	if a.IsConnected() {
+		a.session.Exit(true)
+		a.mu.Lock()
+		a.connected = false
+		a.mu.Unlock()
+	}
 }
 
 func (a *audioPlayer) IsConnected() bool {
@@ -126,7 +133,7 @@ func (a *audioPlayer) GetSession() UdpSession {
 
 func (a *audioPlayer) playAudio() {
 	if !a.IsPlaying() {
-		if err := a.speakingFunc(); err != nil {
+		if err := a.speakingFunc(true); err != nil {
 			a.session.Error(err)
 			return
 		}
@@ -163,17 +170,16 @@ func (a *audioPlayer) playAudio() {
 	}()
 
 	wg.Wait()
+	a.mu.Lock()
+	a.playing = false
+	a.mu.Unlock()
 
 	if a.IsConnected() {
-		if err := a.speakingFunc(); err != nil {
+		if err := a.speakingFunc(false); err != nil {
 			a.session.Error(err)
 			return
 		}
 	}
-
-	a.mu.Lock()
-	a.playing = false
-	a.mu.Unlock()
 }
 
 func (a *audioPlayer) prepAudio(sendChan chan []byte, frameSize int) error {
