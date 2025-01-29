@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -48,6 +47,10 @@ type session struct {
 	errorChan chan error
 }
 
+// Session is the interface for the underlying session struct.
+//
+// This interface will allow access to the struct in a restricted capacity, allowing for events to be triggered and responded to without breaking the session.
+// Higher level interfaces should implement this interface and it's methods.
 type Session interface {
 	Write(data []byte, binary bool)
 	Connect(gateway string, udp bool) error
@@ -63,6 +66,7 @@ type Session interface {
 	SetWriteLimit(limit int)
 }
 
+// NewSession creates a new session and returns the interface.
 func NewSession() Session {
 	s := &session{
 		mu:        &sync.Mutex{},
@@ -75,6 +79,7 @@ func NewSession() Session {
 	return s
 }
 
+// Write sends data to the connection safely.
 func (s *session) Write(data []byte, binary bool) {
 	if s.canWrite(len(s.writeChan)) {
 		writeReq := wReq{
@@ -87,6 +92,7 @@ func (s *session) Write(data []byte, binary bool) {
 	}
 }
 
+// Connect connects to the gateway, the udp bool is to determine a UDP connection or not, if false it will connect via websocket.
 func (s *session) Connect(gateway string, udp bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
@@ -124,6 +130,10 @@ func (s *session) Connect(gateway string, udp bool) error {
 	return nil
 }
 
+// Exit closes the connection gracefully or forcefully. If graceful is true, it will send a `StatusNormalClosure` (1000) status code, otherwise it will break the connection.
+// The graceful bool has no impact on a UDP connection, as it will always close the same way.
+//
+// Exit will also cancel the read, write, and error channels on the underlying session. If an error is a part of the session's `validCloseErrors` map, it will not return the error.
 func (s *session) Exit(graceful bool) error {
 	defer s.cancel()
 	defer close(s.readChan)
@@ -147,10 +157,14 @@ func (s *session) Exit(graceful bool) error {
 	return nil
 }
 
+// Error writes an error to the error channel.
 func (s *session) Error(err error) {
 	write(s.ctx, s.errorChan, err)
 }
 
+// listen listens on the read channel for incoming messages that have already been read from the connection.
+//
+// It is important to define the types we want to be able to decode events into, using the `SetEventDecoders` method.
 func (s *session) listen() {
 	for {
 		select {
@@ -190,6 +204,7 @@ func (s *session) listen() {
 	}
 }
 
+// read reads from the connection directly. It will read frames until a received frame is completed, at which point it will send the completed frame to the read channel.
 func (s *session) read() {
 	var buffer bytes.Buffer
 	if ws, ok := s.conn.(*ws.WsConn); ok {
@@ -218,7 +233,6 @@ func (s *session) read() {
 				payload, err := s.decodePayload(buffer.Bytes())
 				if err != nil {
 					if err == io.EOF || err == io.ErrUnexpectedEOF {
-						fmt.Println("INCOMPLETE MESSAGE?")
 						if startOffset <= buffer.Len() {
 							buffer.Truncate(startOffset)
 						}
@@ -251,6 +265,7 @@ func (s *session) read() {
 	}
 }
 
+// write safely writes data to the connection.
 func (s *session) write() {
 	for {
 		select {
@@ -271,6 +286,7 @@ func (s *session) write() {
 	}
 }
 
+// error listens for errors on the error channel and logs them to standard output.
 func (s *session) error() {
 	for {
 		select {
@@ -285,6 +301,7 @@ func (s *session) error() {
 	}
 }
 
+// canWrite is a simple helper function to determine if the write limit has been exceeded before attempting a write.
 func (s *session) canWrite(len int) bool {
 	if s.wLimit == nil {
 		return true
@@ -292,6 +309,15 @@ func (s *session) canWrite(len int) bool {
 	return len < *s.wLimit
 }
 
+// SetPayloadDecoders sets the payload decoders for the session.
+// The payload decoders are used to decode incoming payloads directly from the gateway, before sending them through the read channel.
+//
+// Example:
+//
+//	// pass a single payload type
+//	s.SetPayloadDecoders(&payload.SessionPayload{})
+//	// pass multiple payload types
+//	s.SetPayloadDecoders(&payload.VoicePayload{}, &payload.BinaryVoicePayload{})
 func (s *session) SetPayloadDecoders(decoders ...payload.Payload) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -309,6 +335,8 @@ func (s *session) SetPayloadDecoders(decoders ...payload.Payload) {
 	}
 }
 
+// decodePayload is responsible for scanning the map of valid payload decoders and decoding into the correct one.
+// It is critical for the payload type to have a defined error in it's `Unmarshal` function, otherwise there is the chance for an unintended payload decode.
 func (s *session) decodePayload(data []byte) (*payload.Payload, error) {
 	var err error
 	var msg payload.Payload
@@ -334,6 +362,15 @@ func (s *session) decodePayload(data []byte) (*payload.Payload, error) {
 	return nil, errors.New("no payload decoder found")
 }
 
+// SetEventDecoders sets the event decoders for the session.
+// The event decoders are used to decode events from the read chan into the event handler with the correct typing.
+//
+// Example:
+//
+//	// pass a single event type
+//	s.SetEventDecoders(&payload.SessionPayload{})
+//	// pass multiple event types
+//	s.SetEventDecoders(&payload.VoicePayload{}, &payload.BinaryVoicePayload{})
 func (s *session) SetEventDecoders(decoder ...payload.Payload) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -447,7 +484,6 @@ func (s *session) SetErrorHandlers(handlers map[error]func()) {
 
 func (s *session) handleError(err error) {
 	if handler, ok := s.errorHandlers[err]; ok {
-		fmt.Println("HANDLING ERROR:", err)
 		handler()
 	}
 }

@@ -395,7 +395,6 @@ func (r *RTPHeader) MarshalBinary() ([]byte, error) {
 
 func (r *RTPHeader) UnmarshalBinary(data []byte) error {
 	if len(data) < 12 {
-		fmt.Println(string(data))
 		return fmt.Errorf("data too short to contain RTP header")
 	}
 

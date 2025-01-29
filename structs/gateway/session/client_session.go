@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -766,7 +765,6 @@ func (s *clientSession) validateEvent(p payload.Payload) (any, error) {
 	var err error
 	sp, ok := p.(*payload.SessionPayload)
 	if !ok {
-		fmt.Println(p.ToString())
 		return nil, errors.New("invalid session payload type - validate error: " + p.ToString())
 	}
 	sp.Data, err = receiveevents.NewReceiveEvent(*sp)

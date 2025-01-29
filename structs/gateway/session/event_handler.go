@@ -329,8 +329,6 @@ func (e *voiceEventHandler) handleStandardEvent(s VoiceSession, p payload.VoiceP
 }
 
 func (e *voiceEventHandler) handleBinaryEvent(s VoiceSession, p payload.BinaryVoicePayload) error {
-	fmt.Println("HANDLING BINARY VOICE EVENT: ", p.OpCode)
-	fmt.Println(p.ToString())
 	if handler, ok := e.BinaryHandlers[gateway.VoiceOpCode(p.OpCode)]; ok && handler != nil {
 		if p.SequenceNumber != nil {
 			s.SetSequence(int(*p.SequenceNumber))

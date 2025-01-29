@@ -31,8 +31,6 @@ func NewAudioResource() AudioResource {
 }
 
 func (a *audioResource) RegisterFile(path string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
 	err := ffmpeg.ConvertFileToOpus(path, a.stream, a.ctx)
 	if err != nil {
 		return err

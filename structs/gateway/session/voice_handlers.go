@@ -109,62 +109,10 @@ func handleVoiceSessionDescriptionEvent(s VoiceSession, p payload.VoicePayload) 
 
 func handleVoiceSpeakingEvent(s VoiceSession, p payload.VoicePayload) error {
 	if _, ok := p.Data.(receiveevents.SpeakingEvent); ok {
-		// if *speakingEvent.SSRC == s.GetAudioPlayer().GetSession().GetUdpData().SSRC {
-		// 	speakingPayload := payload.VoicePayload{
-		// 		OpCode: gateway.VoiceOpSpeaking,
-		// 		Data:   &speakingEvent,
-		// 		Seq:    s.GetSequence(),
-		// 	}
-
-		// 	bytes, err := speakingPayload.Marshal()
-		// 	if err != nil {
-		// 		return err
-		// 	}
-
-		// 	s.Write(bytes, false)
-		// 	return nil
-		// } else {
-		// 	// TODO: handle other speaking events
-		// 	return nil
-		// }
 		// do nothing with received speaking events for now
 		return nil
 	}
 	return errors.New("unexpected payload data type")
-	// if p.Data != nil {
-	// 	return nil
-	// }
-
-	// var speakingEvent sendevents.SpeakingEvent
-	// ssrc := s.GetAudioPlayer().GetSession().GetUdpData().SSRC
-	// if s.GetAudioPlayer() != nil && s.GetAudioPlayer().IsPlaying() {
-	// 	fmt.Println("SPEAKING STOP")
-	// 	speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
-	// 		Speaking: structs.Bitfield[structs.SpeakingFlag]{},
-	// 		Delay:    0,
-	// 		SSRC:     &ssrc,
-	// 	}
-	// } else {
-	// 	fmt.Println("SPEAKING START")
-	// 	speakingEvent.SpeakingEvent = &structs.SpeakingEvent{
-	// 		Speaking: structs.Bitfield[structs.SpeakingFlag]{structs.SpeakingFlagMicrophone},
-	// 		Delay:    0,
-	// 		SSRC:     &ssrc,
-	// 	}
-	// }
-	// speakingPayload := payload.VoicePayload{
-	// 	OpCode: gateway.VoiceOpSpeaking,
-	// 	Data:   speakingEvent,
-	// 	Seq:    s.GetSequence(),
-	// }
-
-	// data, err := json.Marshal(speakingPayload)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// s.Write(data, false)
-	// return nil
 }
 
 func handleVoiceHeartbeatAckEvent(s VoiceSession, p payload.VoicePayload) error {

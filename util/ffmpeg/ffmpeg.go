@@ -114,15 +114,6 @@ func ConvertFileToOpus(inputPath string, outputChan chan []byte, ctx context.Con
 		return fmt.Errorf("failed to resolve input path: %w", err)
 	}
 
-	// Extract metadata from the original file
-	// var metadata *voice.AudioMetadata
-	// if preserveMetadata {
-	// 	metadata, err = GetOpusMetadataFromFile(absInputPath)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("failed to get metadata: %w", err)
-	// 	}
-	// }
-
 	// Create a shell command to run FFmpeg to convert MP3 to raw PCM
 	FfmpegCmd = exec.Command(
 		ffmpegPath,

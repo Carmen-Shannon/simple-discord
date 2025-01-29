@@ -57,6 +57,11 @@ func (a *audioPlayer) Play(path string) error {
 		}
 	} else if a.IsPlaying() {
 		return errors.New("audio is already playing")
+	} else if a.IsConnected() {
+		a.mu.Lock()
+		a.audioResource.Exit()
+		a.audioResource = NewAudioResource()
+		a.mu.Unlock()
 	}
 
 	go func() {

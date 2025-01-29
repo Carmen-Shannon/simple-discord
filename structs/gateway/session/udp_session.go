@@ -100,12 +100,12 @@ func NewUdpSession() UdpSession {
 }
 
 func (u *udpSession) Write(data []byte, binary bool) {
-	u.Session.Write(data, binary)
-
 	u.mu.Lock()
 	u.sentPackets++
 	u.sentBytes += len(data)
 	u.mu.Unlock()
+
+	u.Session.Write(data, binary)
 }
 
 func (u *udpSession) Exit(graceful bool) error {
@@ -145,6 +145,12 @@ func (u *udpSession) KeepAlive() {
 				u.Error(err)
 				return
 			}
+
+			// decrement the sent packets and bytes since we don't need to include the SRTP packet in the count?
+			u.mu.Lock()
+			u.sentPackets--
+			u.sentBytes -= len(packet)
+			u.mu.Unlock()
 
 			u.Write(packet, false)
 			fmt.Printf("packets sent: %d, bytes sent: %d\n", u.sentPackets, u.sentBytes)

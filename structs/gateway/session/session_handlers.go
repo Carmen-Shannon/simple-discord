@@ -25,7 +25,7 @@ func (e *eventHandler) handleInteractionCreateEvent(s ClientSession, p payload.S
 		if handler, ok := e.CustomHandlers[name]; ok && handler != nil {
 			go func() {
 				if err := handler(s, p); err != nil {
-					fmt.Println(err)
+					s.Error(err)
 				}
 			}()
 			return nil
@@ -182,13 +182,11 @@ func handleInvalidSessionEvent(s ClientSession, p payload.SessionPayload) error 
 			if err := s.ResumeSession(); err != nil {
 				return err
 			}
-			fmt.Println("INVALID SESSION - RESUMED SESSION")
 		} else {
 			s.CloseResumeReceived()
 			if err := s.ReconnectSession(); err != nil {
 				return err
 			}
-			fmt.Println("INVALID SESSION - RECONNECTED")
 		}
 	} else {
 		return errors.New("unexpected payload data type")
