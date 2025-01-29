@@ -348,6 +348,7 @@ func (s *clientSession) Play(filepath string, guildID, channelID structs.Snowfla
 		if err := s.JoinVoice(guildID, channelID); err != nil {
 			return nil, err
 		}
+		vs = s.GetVoiceSession(guildID)
 	}
 
 	if err := vs.GetAudioPlayer().Play(filepath); err != nil {

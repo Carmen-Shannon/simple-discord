@@ -152,9 +152,9 @@ func (i *DiscoveryPacket) Marshal() ([]byte, error) {
 }
 
 func (i *DiscoveryPacket) Unmarshal(data []byte) error {
-	// if len(data) != 70 {
-	// 	return errors.New("invalid data length for Discovery Packet")
-	// }
+	if len(data) != 74 {
+		return fmt.Errorf("data length is %d, expected 74", len(data))
+	}
 	buf := bytes.NewReader(data)
 
 	if err := binary.Read(buf, binary.BigEndian, &i.PacketType); err != nil {
@@ -509,6 +509,9 @@ func (v *VoicePacket) Marshal() ([]byte, error) {
 }
 
 func (v *VoicePacket) Unmarshal(data []byte) error {
+	if len(data) == 74 || len(data) == 28 {
+		return errors.New("data is a DiscoveryPacket or SenderReportPacket, cannot unmarshal into VoicePacket")
+	}
 	buf := bytes.NewReader(data)
 
 	// Read RTPHeader
@@ -644,6 +647,9 @@ func (s *SenderReportPacket) Marshal() ([]byte, error) {
 }
 
 func (s *SenderReportPacket) Unmarshal(data []byte) error {
+	if len(data) != 28 {
+		return fmt.Errorf("data length is %d, expected 28", len(data))
+	}
 	buf := bytes.NewReader(data)
 
 	// First byte: Version (2 bits), Padding (1 bit), Reception Report Count (5 bits)

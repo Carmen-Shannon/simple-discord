@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -374,7 +373,6 @@ func (v *voiceSession) speaking(state bool) error {
 		return err
 	}
 
-	fmt.Println(string(bytes))
 	v.Write(bytes, false)
 	return nil
 }

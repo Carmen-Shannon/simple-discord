@@ -81,7 +81,7 @@ func NewUdpSession() UdpSession {
 
 	u.SetListenFunc(u.validateEvent)
 	u.SetHandleFunc(u.handleEvent)
-	u.SetPayloadDecoders(&payload.DiscoveryPacket{}, &payload.VoicePacket{})
+	u.SetPayloadDecoders(&payload.DiscoveryPacket{}, &payload.VoicePacket{}, &payload.SenderReportPacket{})
 	u.SetEventDecoders(&payload.DiscoveryPacket{}, &payload.VoicePacket{}, &payload.SenderReportPacket{})
 	u.SetErrorHandlers(map[error]func(){
 		net.ErrClosed: func() {
@@ -251,15 +251,15 @@ func (u *udpSession) handleEvent(p payload.Payload) error {
 func (u *udpSession) validateEvent(p payload.Payload) (any, error) {
 	dp, ok := p.(*payload.DiscoveryPacket)
 	if !ok {
-		vp, ok := p.(*payload.VoicePacket)
+		sr, ok := p.(*payload.SenderReportPacket)
 		if !ok {
-			sr, ok := p.(*payload.SenderReportPacket)
+			vp, ok := p.(*payload.VoicePacket)
 			if !ok {
 				return nil, errors.New("invalid udp payload type - validate error: " + p.ToString())
 			}
-			return sr, nil
+			return vp, nil
 		}
-		return vp, nil
+		return sr, nil
 	}
 	return dp, nil
 }
