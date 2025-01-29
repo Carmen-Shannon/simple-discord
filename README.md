@@ -87,53 +87,53 @@ func main() {
 
     // set up a new handler function with the proper arguments and error response
     testCommand := func(sess session.ClientSession, p payload.SessionPayload) error {
-		// I set up this ValidateEvent function to be able to decode the payload data into an actual interaction event
+        // I set up this ValidateEvent function to be able to decode the payload data into an actual interaction event
         // feel free to use it or use `interactionEvent, ok := p.Data.(receiveevents.InteractionCreateEvent)
-		interactionEvent, ok := payload.ValidateEvent[receiveevents.InteractionCreateEvent](p)
-		if !ok {
-			return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
-		}
+        interactionEvent, ok := payload.ValidateEvent[receiveevents.InteractionCreateEvent](p)
+        if !ok {
+            return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
+        }
 
         // for now using the NewInteractionResponseOptions function to create an interaction reply
-		response := structs.NewInteractionResponseOptions()
+        response := structs.NewInteractionResponseOptions()
         // setting the response type
-		response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
+        response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
         // setting the flags, use structs.MessageFlag with the built-in Bitfield struct.
-		response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
+        response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
 
         // using the ClientSession GetServerByGuildID function to grab the `Server` the bot was invoked in
-		server := sess.GetServerByGuildID(*interactionEvent.GuildID)
+        server := sess.GetServerByGuildID(*interactionEvent.GuildID)
         // using the Server GetVoiceState function to grab the voice channel of the invoking user
-		voiceChannel := server.GetVoiceState(interactionEvent.Member.User.ID)
+        voiceChannel := server.GetVoiceState(interactionEvent.Member.User.ID)
         // making sure the user invoking the bot is in a voice channel before triggering the command
-		if voiceChannel == nil || voiceChannel.ChannelID == nil {
-			response.SetContent("You must be in a voice channel to use this command")
+        if voiceChannel == nil || voiceChannel.ChannelID == nil {
+            response.SetContent("You must be in a voice channel to use this command")
             // always call Reply
-			err := sess.Reply(response, interactionEvent.Interaction)
-			if err != nil {
-				return fmt.Errorf("could not reply to interaction: %v", err)
-			}
-			return nil
-		}
+            err := sess.Reply(response, interactionEvent.Interaction)
+            if err != nil {
+                return fmt.Errorf("could not reply to interaction: %v", err)
+            }
+            return nil
+        }
 
         // setting the response message content
-		response.SetContent("Pong!")
+        response.SetContent("Pong!")
         // always call Reply
-		err = sess.Reply(response, interactionEvent.Interaction)
-		if err != nil {
-			return fmt.Errorf("could not reply to interaction: %v", err)
-		}
+        err = sess.Reply(response, interactionEvent.Interaction)
+        if err != nil {
+            return fmt.Errorf("could not reply to interaction: %v", err)
+        }
 
         // using the ClientSession JoinVoice function to join a voice channel, this is how you init a voice gateway connection
-		err = sess.JoinVoice(*interactionEvent.GuildID, *voiceChannel.ChannelID)
-		if err != nil {
-			return fmt.Errorf("could not join voice channel: %v", err)
-		}
+        err = sess.JoinVoice(*interactionEvent.GuildID, *voiceChannel.ChannelID)
+        if err != nil {
+            return fmt.Errorf("could not join voice channel: %v", err)
+        }
 
         // if you want to track which shard handled the command
-		fmt.Println("Command was triggered by shard: ", *sess.GetShard())
-		return nil
-	}
+        fmt.Println("Command was triggered by shard: ", *sess.GetShard())
+        return nil
+    }
 
     // creating a map we can use to pass to the RegisterCommands function
     commands := map[string]session.CommandFunc{
