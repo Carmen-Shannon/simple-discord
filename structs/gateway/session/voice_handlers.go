@@ -121,7 +121,7 @@ func handleVoiceHeartbeatAckEvent(s VoiceSession, p payload.VoicePayload) error 
 
 func handleSendVoiceResumeEvent(s VoiceSession, p payload.VoicePayload) error {
 	if _, ok := p.Data.(sendevents.VoiceResumeEvent); ok {
-		data, err := json.Marshal(p)
+		data, err := p.Marshal()
 		if err != nil {
 			return err
 		}

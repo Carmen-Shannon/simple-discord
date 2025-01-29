@@ -137,17 +137,15 @@ func (a *audioPlayer) GetSession() UdpSession {
 }
 
 func (a *audioPlayer) playAudio() {
-	if !a.IsPlaying() {
-		if err := a.speakingFunc(true); err != nil {
-			a.session.Error(err)
-			return
-		}
-
-		time.Sleep(250 * time.Millisecond)
-		a.mu.Lock()
-		a.playing = true
-		a.mu.Unlock()
+	if err := a.speakingFunc(true); err != nil {
+		a.session.Error(err)
+		return
 	}
+
+	time.Sleep(250 * time.Millisecond)
+	a.mu.Lock()
+	a.playing = true
+	a.mu.Unlock()
 
 	sendChan := make(chan []byte)
 

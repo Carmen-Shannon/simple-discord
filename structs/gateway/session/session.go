@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +19,8 @@ import (
 )
 
 var errWriteLimit = errors.New("write limit exceeded")
+var errWsaRecv = errors.New("An established connection was aborted by the software in your host machine.")
+var errWsaSend = errors.New("An existing connection was forcibly closed by the remote host.")
 
 type wReq struct {
 	data   []byte
@@ -279,6 +283,7 @@ func (s *session) write() {
 				if !s.isValidCloseErr(err) {
 					write(s.ctx, s.errorChan, err)
 				}
+				fmt.Println("SESSION WRITE ERROR: ", err)
 				s.handleError(err)
 				return
 			}
@@ -439,6 +444,13 @@ func (s *session) SetValidCloseErrors(err ...error) {
 
 func (s *session) isValidCloseErr(err error) bool {
 	_, ok := s.validCloseErrs[err]
+	if !ok {
+		for e := range s.validCloseErrs {
+			if strings.Contains(err.Error(), e.Error()) {
+				return true
+			}
+		}
+	}
 	return ok
 }
 
@@ -485,6 +497,14 @@ func (s *session) SetErrorHandlers(handlers map[error]func()) {
 func (s *session) handleError(err error) {
 	if handler, ok := s.errorHandlers[err]; ok {
 		handler()
+		return
+	}
+
+	for e, h := range s.errorHandlers {
+		if strings.Contains(err.Error(), e.Error()) {
+			h()
+			return
+		}
 	}
 }
 

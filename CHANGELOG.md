@@ -9,3 +9,7 @@
 - Fixed an issue with the UDP handler not properly decoding packets into the correct payload type
 - Fixed an issue with the audio player not connecting the UDP session properly, related to the previous issue
 - Moved the 
+
+## [v0.2.0]
+- Fixed an error related to socket closure from internal socket calls
+- Added VoiceSession resume functionality so now voice sessions should be able to stay connected indefinitely, without breaking the udp connection. (hopefully)

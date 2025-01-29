@@ -129,47 +129,56 @@ func NewClientSession() ClientSession {
 	cs.SetStatusCodeHandlers(map[websocket.StatusCode]func(){
 		websocket.StatusNormalClosure: func() {},
 		websocket.StatusGoingAway: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4000: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4001: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4002: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4003: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4005: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4006: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4007: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4008: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 		4009: func() {
-			cs.reconnectFunc()
+			cs.ReconnectSession()
 		},
 	})
 	cs.SetErrorHandlers(map[error]func(){
 		net.ErrClosed: func() {
 		},
+		errWsaRecv: func() {
+			if err := cs.ResumeSession(); err != nil {
+				cs.Exit(false)
+			}
+		},
 		io.EOF: func() {
-			cs.reconnectFunc()
+			if err := cs.ResumeSession(); err != nil {
+				cs.Exit(false)
+			}
 		},
 		io.ErrUnexpectedEOF: func() {
-			cs.reconnectFunc()
+			if err := cs.ResumeSession(); err != nil {
+				cs.Exit(false)
+			}
 		},
 	})
-	cs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed)
+	cs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed, errWsaRecv, errWsaSend)
 
 	return cs
 }
@@ -290,10 +299,14 @@ func (s *clientSession) Send(messageOptions dto.MessageOptions, response bool) (
 func (s *clientSession) JoinVoice(guildID, channelID structs.Snowflake) error {
 	vs := s.GetVoiceSession(guildID)
 	if vs == nil {
-		vs = NewVoiceSession(s.vsCleanup(guildID))
+		vs = NewVoiceSession()
+		vs.SetCleanupFunc(s.vsCleanup(guildID))
+		vs.SetResumeFunc(s.vsResume(guildID, vs))
 		s.AddVoiceSession(guildID, vs)
 	} else if !vs.IsConnected() {
-		vs = NewVoiceSession(s.vsCleanup(guildID))
+		vs = NewVoiceSession()
+		vs.SetCleanupFunc(s.vsCleanup(guildID))
+		vs.SetResumeFunc(s.vsResume(guildID, vs))
 		s.AddVoiceSession(guildID, vs)
 	} else if vs.IsConnected() {
 		return errors.New("already connected to the voice channel")
@@ -787,5 +800,11 @@ func (s *clientSession) reconnectFunc() func() {
 func (s *clientSession) vsCleanup(guildID structs.Snowflake) func() {
 	return func() {
 		delete(s.voiceSessions, guildID.ToString())
+	}
+}
+
+func (s *clientSession) vsResume(guildID structs.Snowflake, vs VoiceSession) func() {
+	return func() {
+		s.AddVoiceSession(guildID, vs)
 	}
 }

@@ -41,6 +41,7 @@ type voiceSession struct {
 	eventHandler *voiceEventHandler
 
 	cleanupFunc func()
+	resumeFunc  func()
 
 	closeGroup    structs.SyncGroup
 	connectReady  chan struct{}
@@ -53,6 +54,8 @@ type VoiceSession interface {
 	Error(err error)
 	Exit(graceful bool) error
 	Connect() error
+	Resume() error
+	ResumeSession() error
 	IsConnected() bool
 	SetToken(token string)
 	GetToken() *string
@@ -73,6 +76,8 @@ type VoiceSession interface {
 	GetCtx() context.Context
 	GetConnectReady() <-chan struct{}
 	GetAudioPlayer() AudioPlayer
+	SetCleanupFunc(cleanupFunc func())
+	SetResumeFunc(resumeFunc func())
 	SignalVoiceStateReady()
 	SignalVoiceServerReady()
 	CloseConnectReady()
@@ -82,12 +87,11 @@ type VoiceSession interface {
 
 var _ VoiceSession = (*voiceSession)(nil)
 
-func NewVoiceSession(cleanupFunc func()) VoiceSession {
+func NewVoiceSession() VoiceSession {
 	vs := &voiceSession{
 		mu:            &sync.Mutex{},
 		Session:       NewSession(),
 		eventHandler:  NewEventHandler[voiceEventHandler](),
-		cleanupFunc:   cleanupFunc,
 		closeGroup:    *structs.NewSyncGroup(),
 		connectReady:  make(chan struct{}),
 		resumeReady:   make(chan struct{}),
@@ -113,8 +117,18 @@ func NewVoiceSession(cleanupFunc func()) VoiceSession {
 		4014: func() {
 			vs.Exit(false)
 		},
+		4015: func() {
+			if err := vs.ResumeSession(); err != nil {
+				vs.Exit(false)
+			}
+		},
 	})
 	vs.SetErrorHandlers(map[error]func(){
+		errWsaRecv: func() {
+			if err := vs.ResumeSession(); err != nil {
+				vs.Exit(false)
+			}
+		},
 		io.EOF: func() {
 			vs.Exit(false)
 		},
@@ -122,7 +136,7 @@ func NewVoiceSession(cleanupFunc func()) VoiceSession {
 			vs.Exit(false)
 		},
 	})
-	vs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed)
+	vs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed, errWsaSend, errWsaRecv)
 
 	return vs
 }
@@ -168,6 +182,52 @@ func (v *voiceSession) Connect() error {
 		return nil
 	case <-v.readyReceived:
 	}
+	return nil
+}
+
+func (v *voiceSession) Resume() error {
+	query := "?v=8"
+	url := *v.connectUrl
+
+	if err := v.Session.Connect(url+query, false); err != nil {
+		return err
+	}
+	v.mu.Lock()
+	v.connected = true
+	v.mu.Unlock()
+
+	if err := v.resume(); err != nil {
+		return err
+	}
+
+	select {
+	case <-v.ctx.Done():
+		return nil
+	case <-v.resumeReady:
+	}
+
+	v.resumeFunc()
+	return nil
+}
+
+func (v *voiceSession) ResumeSession() error {
+	if err := v.Exit(false); err != nil {
+		return err
+	}
+
+	vs := NewVoiceSession()
+	vs.SetCleanupFunc(v.cleanupFunc)
+	vs.SetResumeFunc(v.resumeFunc)
+	vs.SetToken(*v.GetToken())
+	vs.SetBotData(*v.GetBotData())
+	vs.SetChannelID(*v.GetChannelID())
+	vs.SetGuildID(*v.GetGuildID())
+	vs.SetSequence(*v.GetSequence())
+	vs.SetConnectUrl(*v.connectUrl)
+	if err := vs.Resume(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -291,6 +351,18 @@ func (v *voiceSession) GetAudioPlayer() AudioPlayer {
 	return v.audioPlayer
 }
 
+func (v *voiceSession) SetCleanupFunc(cleanupFunc func()) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.cleanupFunc = cleanupFunc
+}
+
+func (v *voiceSession) SetResumeFunc(resumeFunc func()) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.resumeFunc = resumeFunc
+}
+
 func (v *voiceSession) SignalVoiceStateReady() {
 	v.mu.Lock()
 	v.voiceStateReadySignal = true
@@ -380,6 +452,27 @@ func (v *voiceSession) speaking(state bool) error {
 func (v *voiceSession) selectProtocol() error {
 	sp := &payload.VoicePayload{
 		OpCode: gateway.VoiceOpSelectProtocol,
+	}
+
+	if err := v.eventHandler.HandleEvent(v, sp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (v *voiceSession) resume() error {
+	sp := &payload.VoicePayload{
+		OpCode: gateway.VoiceOpResume,
+		Data: &sendevents.VoiceResumeEvent{
+			ServerID:  *v.GetGuildID(),
+			SessionID: *v.GetSessionID(),
+			Token:     *v.GetToken(),
+		},
+	}
+	if v.GetSequence() != nil {
+		sp.Data.(*sendevents.VoiceResumeEvent).SeqAck = *v.GetSequence()
+	} else {
+		sp.Data.(*sendevents.VoiceResumeEvent).SeqAck = -1
 	}
 
 	if err := v.eventHandler.HandleEvent(v, sp); err != nil {
