@@ -73,10 +73,12 @@ func main() {
 ```go
 import (
     "github.com/Carmen-Shannon/simple-discord/bot"
-    "github.com/Carmen-Shannon/simple-discord/session"
-    "github.com/Carmen-Shannon/simple-discord/structs"
-    "github.com/Carmen-Shannon/simple-discord/structs/gateway"
-    receiveevents "github.com/Carmen-Shannon/simple-discord/gateway/receive_events"
+	"github.com/Carmen-Shannon/simple-discord/structs"
+	"github.com/Carmen-Shannon/simple-discord/structs/dto"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway/payload"
+	receiveevents "github.com/Carmen-Shannon/simple-discord/structs/gateway/receive_events"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway/session"
+	"github.com/Carmen-Shannon/simple-discord/util"
 )
 
 func main() {
@@ -84,31 +86,56 @@ func main() {
     ...
 
     // set up a new handler function with the proper arguments and error response
-    testCommand := func(sess *session.Session, payload gateway.Payload) error {
-        // this is boilerplate, you don't need to include it but it does allow you to use the interactionEvent directly and access all of the associated properties
-        interactionEvent, ok := payload.Data.(receieveevents.InteractionCreateEvent)
-        if !ok {
-            return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
-        }
+    testCommand := func(sess session.ClientSession, p payload.SessionPayload) error {
+		// I set up this ValidateEvent function to be able to decode the payload data into an actual interaction event
+        // feel free to use it or use `interactionEvent, ok := p.Data.(receiveevents.InteractionCreateEvent)
+		interactionEvent, ok := payload.ValidateEvent[receiveevents.InteractionCreateEvent](p)
+		if !ok {
+			return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
+		}
 
-        // the bot needs to reply and ACK an interaction, so you need to call sess.Reply() at some point before returning.
-        // discord requires an ACK within 3 seconds, but you are able to edit the message by sending follow-up HTTP requests
-        // use NewInteractionResponseOptions to create the response that Reply needs
-        response := structs.NewInteractionResponseOptions()
-        // see strucs.InteractionResponseType for available types
-        response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
-        // see structs.MessageFlag for available message flags
-        response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
+        // for now using the NewInteractionResponseOptions function to create an interaction reply
+		response := structs.NewInteractionResponseOptions()
+        // setting the response type
+		response.SetResponseType(structs.ChannelMessageWithSourceInteraction)
+        // setting the flags, use structs.MessageFlag with the built-in Bitfield struct.
+		response.SetFlags(structs.Bitfield[structs.MessageFlag]{structs.SurpressNotificationsMessageFlag})
 
-        response.SetContent("Hello world!")
-        if err := sess.Reply(response, interactionEvent.Interaction); err != nil {
-            return fmt.Errorf("could not reply to interaction: %v", err)
-        }
+        // using the ClientSession GetServerByGuildID function to grab the `Server` the bot was invoked in
+		server := sess.GetServerByGuildID(*interactionEvent.GuildID)
+        // using the Server GetVoiceState function to grab the voice channel of the invoking user
+		voiceChannel := server.GetVoiceState(interactionEvent.Member.User.ID)
+        // making sure the user invoking the bot is in a voice channel before triggering the command
+		if voiceChannel == nil || voiceChannel.ChannelID == nil {
+			response.SetContent("You must be in a voice channel to use this command")
+            // always call Reply
+			err := sess.Reply(response, interactionEvent.Interaction)
+			if err != nil {
+				return fmt.Errorf("could not reply to interaction: %v", err)
+			}
+			return nil
+		}
 
-        // return once the command has finished
-        return nil
-    }
+        // setting the response message content
+		response.SetContent("Pong!")
+        // always call Reply
+		err = sess.Reply(response, interactionEvent.Interaction)
+		if err != nil {
+			return fmt.Errorf("could not reply to interaction: %v", err)
+		}
 
+        // using the ClientSession JoinVoice function to join a voice channel, this is how you init a voice gateway connection
+		err = sess.JoinVoice(*interactionEvent.GuildID, *voiceChannel.ChannelID)
+		if err != nil {
+			return fmt.Errorf("could not join voice channel: %v", err)
+		}
+
+        // if you want to track which shard handled the command
+		fmt.Println("Command was triggered by shard: ", *sess.GetShard())
+		return nil
+	}
+
+    // creating a map we can use to pass to the RegisterCommands function
     commands := map[string]session.CommandFunc{
         "hello": testCommand
     }
@@ -198,7 +225,7 @@ func main() {
 ```
 
 ## Version
-N/A no release yet, v0.1.0 will be the first release
+Latest stable release is `v0.1.1`
 
 ## In-Progress
 
@@ -209,7 +236,9 @@ This list will change as I want to add things
     - [ ] Voice gateway management
         - [x] Voice Gateway Connection/Upkeep
         - [x] Voice Gateway UDP Connection/Upkeep
-            - [x] Voice Encoding (playing audio)
+            - [ ] Voice Encoding (playing audio)
+                - [x] Playing from file (any PCM compatible data such as mp3)
+                - [ ] Controlling audio playback state (pausing, resuming)
             - [ ] Voice Decoding (recording audio)
         - [ ] DAVE Voice support
 - [x] Event handler

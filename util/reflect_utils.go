@@ -65,8 +65,3 @@ func Min(a, b int) int {
 	}
 	return b
 }
-
-func ValidateEvent[T any](p any) (*T, bool) {
-	event, ok := p.(T)
-	return &event, ok
-}

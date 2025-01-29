@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/Carmen-Shannon/simple-discord/structs/gateway/payload"
 	"github.com/Carmen-Shannon/simple-discord/structs/gateway"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway/payload"
 )
 
 // this function will take an un-typed payload and return the appropriate type based on the OpCode, this will handle dispatch events

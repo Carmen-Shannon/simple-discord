@@ -731,3 +731,8 @@ func (s *SenderReportPacket) Hash() string {
 	h.Write([]byte(s.ToString()))
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+func ValidateEvent[T any](p SessionPayload) (*T, bool) {
+	event, ok := p.Data.(T)
+	return &event, ok
+}
