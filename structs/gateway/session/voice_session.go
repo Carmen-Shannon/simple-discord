@@ -75,6 +75,7 @@ type VoiceSession interface {
 	SetEventHandler(eventHandler *voiceEventHandler)
 	GetCtx() context.Context
 	GetConnectReady() <-chan struct{}
+	SetAudioPlayer(audioPlayer AudioPlayer)
 	GetAudioPlayer() AudioPlayer
 	SetCleanupFunc(cleanupFunc func())
 	SetResumeFunc(resumeFunc func())
@@ -146,8 +147,14 @@ func (v *voiceSession) Exit(graceful bool) error {
 	v.CloseConnectReady()
 	v.CloseResumeReady()
 
-	if v.audioPlayer.IsConnected() {
-		v.audioPlayer.Exit()
+	if graceful {
+		if !v.audioPlayer.IsPlaying() && v.audioPlayer.IsConnected() {
+			v.audioPlayer.Exit()
+		}
+	} else {
+		if v.audioPlayer.IsConnected() {
+			v.audioPlayer.Exit()
+		}
 	}
 
 	if err := v.Session.Exit(graceful); err != nil {
@@ -211,7 +218,7 @@ func (v *voiceSession) Resume() error {
 }
 
 func (v *voiceSession) ResumeSession() error {
-	if err := v.Exit(false); err != nil {
+	if err := v.Exit(true); err != nil {
 		return err
 	}
 
@@ -224,6 +231,7 @@ func (v *voiceSession) ResumeSession() error {
 	vs.SetGuildID(*v.GetGuildID())
 	vs.SetSequence(*v.GetSequence())
 	vs.SetConnectUrl(*v.connectUrl)
+	vs.SetAudioPlayer(v.GetAudioPlayer())
 	if err := vs.Resume(); err != nil {
 		return err
 	}
@@ -343,6 +351,12 @@ func (v *voiceSession) GetConnectReady() <-chan struct{} {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.connectReady
+}
+
+func (v *voiceSession) SetAudioPlayer(audioPlayer AudioPlayer) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.audioPlayer = audioPlayer
 }
 
 func (v *voiceSession) GetAudioPlayer() AudioPlayer {
