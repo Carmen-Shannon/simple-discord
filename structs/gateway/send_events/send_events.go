@@ -53,10 +53,10 @@ type SpeakingEvent struct {
 }
 
 type VoiceResumeEvent struct {
-	ServerID  structs.Snowflake `json:"server_id"`
-	SessionID string            `json:"session_id"`
-	Token     string            `json:"token"`
-	SeqAck    int               `json:"seq_ack"`
+	ServerID  string `json:"server_id"`
+	SessionID string `json:"session_id"`
+	Token     string `json:"token"`
+	SeqAck    *int   `json:"seq_ack,omitempty"`
 }
 
 type VoiceDaveReadyForTransitionEvent struct {

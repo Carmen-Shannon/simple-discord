@@ -222,6 +222,7 @@ func (s *session) read() {
 		default:
 			bytes, err := s.conn.Read(s.ctx)
 			if err != nil {
+				fmt.Println("SESSION READ ERROR: ", err) // leaving this for now until I am sure the error handling is working as expected
 				if status := websocket.CloseStatus(err); status >= 0 {
 					s.handleStatusCode(status)
 					return
@@ -283,7 +284,6 @@ func (s *session) write() {
 				if !s.isValidCloseErr(err) {
 					write(s.ctx, s.errorChan, err)
 				}
-				fmt.Println("SESSION WRITE ERROR: ", err)
 				s.handleError(err)
 				return
 			}

@@ -40,8 +40,9 @@ type voiceSession struct {
 	audioPlayer  AudioPlayer
 	eventHandler *voiceEventHandler
 
-	cleanupFunc func()
-	resumeFunc  func()
+	cleanupFunc   func()
+	resumeFunc    func()
+	reconnectFunc func()
 
 	closeGroup    structs.SyncGroup
 	connectReady  chan struct{}
@@ -79,6 +80,7 @@ type VoiceSession interface {
 	GetAudioPlayer() AudioPlayer
 	SetCleanupFunc(cleanupFunc func())
 	SetResumeFunc(resumeFunc func())
+	SetReconnectFunc(reconnectFunc func())
 	SignalVoiceStateReady()
 	SignalVoiceServerReady()
 	CloseConnectReady()
@@ -112,29 +114,72 @@ func NewVoiceSession() VoiceSession {
 	vs.SetEventDecoders(&payload.VoicePayload{}, &payload.BinaryVoicePayload{})
 	vs.SetStatusCodeHandlers(map[websocket.StatusCode]func(){
 		websocket.StatusNormalClosure: func() {},
+		websocket.StatusGoingAway: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4001: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4002: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4003: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4004: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4005: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
 		4006: func() {
 			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4009: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4011: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
+		4012: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
 		},
 		4014: func() {
-			vs.Exit(false)
+			vs.Exit(true)
 		},
 		4015: func() {
 			if err := vs.ResumeSession(); err != nil {
 				vs.Exit(false)
 			}
 		},
+		4016: func() {
+			vs.Exit(false)
+			vs.reconnectFunc()
+		},
 	})
 	vs.SetErrorHandlers(map[error]func(){
+		net.ErrClosed: func() {},
 		errWsaRecv: func() {
-			if err := vs.ResumeSession(); err != nil {
-				vs.Exit(false)
-			}
+			vs.Exit(false)
+			vs.reconnectFunc()
 		},
 		io.EOF: func() {
 			vs.Exit(false)
+			vs.reconnectFunc()
 		},
-		net.ErrClosed: func() {
+		io.ErrUnexpectedEOF: func() {
 			vs.Exit(false)
+			vs.reconnectFunc()
 		},
 	})
 	vs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed, errWsaSend, errWsaRecv)
@@ -146,15 +191,10 @@ func (v *voiceSession) Exit(graceful bool) error {
 	defer v.cancel()
 	v.CloseConnectReady()
 	v.CloseResumeReady()
+	v.CloseReadyReceived()
 
-	if graceful {
-		if !v.audioPlayer.IsPlaying() && v.audioPlayer.IsConnected() {
-			v.audioPlayer.Exit()
-		}
-	} else {
-		if v.audioPlayer.IsConnected() {
-			v.audioPlayer.Exit()
-		}
+	if v.audioPlayer.IsConnected() {
+		v.audioPlayer.Exit()
 	}
 
 	if err := v.Session.Exit(graceful); err != nil {
@@ -218,18 +258,22 @@ func (v *voiceSession) Resume() error {
 }
 
 func (v *voiceSession) ResumeSession() error {
-	if err := v.Exit(true); err != nil {
+	if err := v.resumedExit(); err != nil {
 		return err
 	}
 
 	vs := NewVoiceSession()
 	vs.SetCleanupFunc(v.cleanupFunc)
 	vs.SetResumeFunc(v.resumeFunc)
+	vs.SetReconnectFunc(v.reconnectFunc)
+	vs.SetSessionID(*v.GetSessionID())
 	vs.SetToken(*v.GetToken())
 	vs.SetBotData(*v.GetBotData())
 	vs.SetChannelID(*v.GetChannelID())
 	vs.SetGuildID(*v.GetGuildID())
-	vs.SetSequence(*v.GetSequence())
+	if v.GetSequence() != nil {
+		vs.SetSequence(*v.GetSequence())
+	}
 	vs.SetConnectUrl(*v.connectUrl)
 	vs.SetAudioPlayer(v.GetAudioPlayer())
 	if err := vs.Resume(); err != nil {
@@ -377,6 +421,12 @@ func (v *voiceSession) SetResumeFunc(resumeFunc func()) {
 	v.resumeFunc = resumeFunc
 }
 
+func (v *voiceSession) SetReconnectFunc(reconnectFunc func()) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.reconnectFunc = reconnectFunc
+}
+
 func (v *voiceSession) SignalVoiceStateReady() {
 	v.mu.Lock()
 	v.voiceStateReadySignal = true
@@ -477,21 +527,39 @@ func (v *voiceSession) selectProtocol() error {
 func (v *voiceSession) resume() error {
 	sp := &payload.VoicePayload{
 		OpCode: gateway.VoiceOpResume,
-		Data: &sendevents.VoiceResumeEvent{
-			ServerID:  *v.GetGuildID(),
+		Data: sendevents.VoiceResumeEvent{
+			ServerID:  v.GetGuildID().ToString(),
 			SessionID: *v.GetSessionID(),
 			Token:     *v.GetToken(),
+			SeqAck:    v.GetSequence(),
 		},
-	}
-	if v.GetSequence() != nil {
-		sp.Data.(*sendevents.VoiceResumeEvent).SeqAck = *v.GetSequence()
-	} else {
-		sp.Data.(*sendevents.VoiceResumeEvent).SeqAck = -1
 	}
 
 	if err := v.eventHandler.HandleEvent(v, sp); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (v *voiceSession) resumedExit() error {
+	defer v.cancel()
+	v.CloseConnectReady()
+	v.CloseResumeReady()
+	v.CloseReadyReceived()
+
+	if !v.audioPlayer.IsPlaying() && v.audioPlayer.IsConnected() {
+		v.audioPlayer.Exit()
+	}
+
+	if err := v.Session.Exit(false); err != nil {
+		return err
+	}
+
+	v.mu.Lock()
+	v.connected = false
+	v.mu.Unlock()
+
+	v.cleanupFunc()
 	return nil
 }
 

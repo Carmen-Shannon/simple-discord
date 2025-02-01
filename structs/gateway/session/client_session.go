@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -129,7 +130,11 @@ func NewClientSession() ClientSession {
 	cs.SetStatusCodeHandlers(map[websocket.StatusCode]func(){
 		websocket.StatusNormalClosure: func() {},
 		websocket.StatusGoingAway: func() {
-			cs.ReconnectSession()
+			if err := cs.ResumeSession(); err != nil {
+				if err := cs.ReconnectSession(); err != nil {
+					cs.Exit(false)
+				}
+			}
 		},
 		4000: func() {
 			cs.ReconnectSession()
@@ -143,10 +148,11 @@ func NewClientSession() ClientSession {
 		4003: func() {
 			cs.ReconnectSession()
 		},
-		4005: func() {
-			cs.ReconnectSession()
+		4004: func() {
+			fmt.Println("Session token is invalid, please check your token")
+			cs.Exit(false)
 		},
-		4006: func() {
+		4005: func() {
 			cs.ReconnectSession()
 		},
 		4007: func() {
@@ -160,8 +166,7 @@ func NewClientSession() ClientSession {
 		},
 	})
 	cs.SetErrorHandlers(map[error]func(){
-		net.ErrClosed: func() {
-		},
+		net.ErrClosed: func() {},
 		errWsaRecv: func() {
 			if err := cs.ResumeSession(); err != nil {
 				cs.Exit(false)
@@ -302,19 +307,30 @@ func (s *clientSession) JoinVoice(guildID, channelID structs.Snowflake) error {
 		vs = NewVoiceSession()
 		vs.SetCleanupFunc(s.vsCleanup(guildID))
 		vs.SetResumeFunc(s.vsResume(guildID, vs))
-		s.AddVoiceSession(guildID, vs)
+		vs.SetReconnectFunc(s.vsReconnect(guildID, channelID))
 	} else if !vs.IsConnected() {
 		vs = NewVoiceSession()
 		vs.SetCleanupFunc(s.vsCleanup(guildID))
 		vs.SetResumeFunc(s.vsResume(guildID, vs))
-		s.AddVoiceSession(guildID, vs)
+		vs.SetReconnectFunc(s.vsReconnect(guildID, channelID))
 	} else if vs.IsConnected() {
-		return errors.New("already connected to the voice channel")
+		if vs.GetChannelID().Equals(channelID) {
+			return errors.New("already connected to the voice channel")
+		} else {
+			if err := vs.Exit(false); err != nil {
+				return err
+			}
+			vs = NewVoiceSession()
+			vs.SetCleanupFunc(s.vsCleanup(guildID))
+			vs.SetResumeFunc(s.vsResume(guildID, vs))
+			vs.SetReconnectFunc(s.vsReconnect(guildID, channelID))
+		}
 	}
 
 	vs.SetBotData(*s.GetBotData())
 	vs.SetGuildID(guildID)
 	vs.SetChannelID(channelID)
+	s.AddVoiceSession(guildID, vs)
 
 	if err := s.voiceStateUpdate(&guildID, &channelID); err != nil {
 		return err
@@ -788,17 +804,12 @@ func (s *clientSession) validateEvent(p payload.Payload) (any, error) {
 	return &sp, nil
 }
 
-func (s *clientSession) reconnectFunc() func() {
-	return func() {
-		if err := s.ReconnectSession(); err != nil {
-			s.Error(err)
-			s.Exit(false)
-		}
-	}
-}
-
 func (s *clientSession) vsCleanup(guildID structs.Snowflake) func() {
 	return func() {
+		if err := s.voiceStateUpdate(&guildID, nil); err != nil {
+			s.Error(err)
+		}
+
 		delete(s.voiceSessions, guildID.ToString())
 	}
 }
@@ -806,5 +817,14 @@ func (s *clientSession) vsCleanup(guildID structs.Snowflake) func() {
 func (s *clientSession) vsResume(guildID structs.Snowflake, vs VoiceSession) func() {
 	return func() {
 		s.AddVoiceSession(guildID, vs)
+	}
+}
+
+func (s *clientSession) vsReconnect(guildID, channelID structs.Snowflake) func() {
+	return func() {
+		if err := s.JoinVoice(guildID, channelID); err != nil {
+			s.Error(err)
+			return
+		}
 	}
 }

@@ -58,7 +58,7 @@ func (p *SessionPayload) Hash() string {
 type VoicePayload struct {
 	OpCode    gateway.VoiceOpCode `json:"op"`
 	Data      any                 `json:"d"`
-	Seq       *int                `json:"s,omitempty"`
+	Seq       *int                `json:"seq,omitempty"`
 	EventName *string             `json:"t,omitempty"`
 }
 
