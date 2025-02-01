@@ -13,3 +13,6 @@
 ## [v0.2.0]
 - Fixed an error related to socket closure from internal socket calls
 - Added VoiceSession resume functionality so now voice sessions should be able to stay connected indefinitely, without breaking the udp connection. (hopefully)
+
+## [v0.3.0]
+- Stabilized reconnect logic for client and voice sessions so they should now be able to keep uptime indefinitely.
