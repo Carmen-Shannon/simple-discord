@@ -55,7 +55,6 @@ func HttpRequest(method string, path string, headers map[string]string, body []b
 			return nil, err
 		}
 
-		fmt.Println("rate limit detected: ", string(respBody))
 		var rl rateLimit
 		err = json.Unmarshal(respBody, &rl)
 		if err != nil {
@@ -64,21 +63,27 @@ func HttpRequest(method string, path string, headers map[string]string, body []b
 
 		if rl.Global {
 			globalRateLimit += rl.RetryAfter
+
 			retryResp, err := HttpRequest(method, path, headers, body)
 			if err != nil {
 				return nil, err
 			}
+
 			globalRateLimit = 0
+
 			return retryResp, nil
 		} else {
 			localRateLimit = rl.RetryAfter
+
 			ticker := time.NewTicker(time.Duration(localRateLimit*1000) * time.Millisecond)
 			<-ticker.C
 			ticker.Stop()
+
 			retryResp, err := HttpRequest(method, path, headers, body)
 			if err != nil {
 				return nil, err
 			}
+
 			return retryResp, nil
 		}
 	} else if resp.StatusCode > 299 {
