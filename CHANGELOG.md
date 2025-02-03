@@ -42,3 +42,6 @@
 
 ## [v0.6.0]
 - Added mp4 to mp3 conversion with ffmpeg
+
+## [v0.6.1]
+- Fixed mp4 to mp3 conversion, still some work to be done here I think as it's kind of inneficient to convert from mp3 to mp4

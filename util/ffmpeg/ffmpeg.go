@@ -186,12 +186,12 @@ func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []b
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve input path: %w", err)
 	}
+	var tempPath string
 	if strings.Contains(inputPath, ".mp4") {
-		tempPath, err := ConvertMp4ToMp3(inputPath)
+		tempPath, err = ConvertMp4ToMp3(inputPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert mp4 to mp3: %w", err)
 		}
-		defer os.Remove(tempPath)
 		absInputPath = tempPath
 	}
 
@@ -223,6 +223,9 @@ func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []b
 		defer ffmpegCmd.Process.Release()
 		defer closeFunc()
 		defer closeOutputChan()
+		if tempPath != "" {
+			defer os.Remove(tempPath)
+		}
 
 		for {
 			select {
