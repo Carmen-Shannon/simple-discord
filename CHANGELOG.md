@@ -36,3 +36,6 @@
 ## [v0.5.1]
 - Fixing an issue where the program would exit when attempting to set the `version` of the bot using the latest git tags, this obviously doesn't work if the project has no git tags.
 - Updating README to reflect some changes and better document how to init the bot.
+
+## [v0.5.2]
+- Fixing documentation.
