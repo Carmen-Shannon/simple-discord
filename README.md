@@ -225,7 +225,7 @@ func main() {
 ```
 
 ## Version
-Latest stable release is `v0.4.0`
+Latest stable release is `v0.5.0`
 
 ## In-Progress
 

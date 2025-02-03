@@ -29,3 +29,6 @@
   - The other branch will listen for these frames on the channel, and process them to Opus encoded audio frames, sending them to another channel.
 - Added XChaCha-Poly1305 encryption
 - Removed ffprobe binaries, ignoring metadata for now since it wasn't being used anyways.
+
+## [v0.5.0]
+- Fixing the tagged version.
