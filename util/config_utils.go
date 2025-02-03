@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -28,13 +27,4 @@ func GetBotUrl() (string, error) {
 	}
 
 	return "", fmt.Errorf("module name not found in go.mod")
-}
-
-func GetBotVersion() (string, error) {
-	cmd := exec.Command("git", "describe", "--tags", "--abbrev=0")
-	output, err := cmd.Output()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
 }

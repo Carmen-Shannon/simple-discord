@@ -38,6 +38,7 @@ type clientSession struct {
 	shard          *int
 	shards         *int
 	maxConcurrency *int
+	version        string
 
 	servers       map[string]*structs.Server
 	voiceSessions map[string]VoiceSession
@@ -104,7 +105,7 @@ type ClientSession interface {
 
 var _ ClientSession = (*clientSession)(nil)
 
-func NewClientSession() ClientSession {
+func NewClientSession(version string) ClientSession {
 	cs := &clientSession{
 		mu:             &sync.Mutex{},
 		Session:        NewSession(),
@@ -115,6 +116,11 @@ func NewClientSession() ClientSession {
 		helloReceived:  make(chan struct{}),
 		readyReceived:  make(chan struct{}),
 		resumeReceived: make(chan struct{}),
+	}
+	if version == "" {
+		cs.version = "1"
+	} else {
+		cs.version = version
 	}
 	cs.ctx, cs.cancel = context.WithCancel(context.Background())
 
@@ -398,7 +404,7 @@ func (s *clientSession) ReconnectSession() error {
 		return err
 	}
 
-	sess := NewClientSession()
+	sess := NewClientSession(s.version)
 	sess.SetToken(*s.GetToken())
 	sess.SetIntents(s.GetIntents()...)
 	sess.SetShard(*s.GetShard())
@@ -424,7 +430,7 @@ func (s *clientSession) ResumeSession() error {
 		return err
 	}
 
-	sess := NewClientSession()
+	sess := NewClientSession(s.version)
 	sess.SetToken(*s.GetToken())
 	sess.SetIntents(s.GetIntents()...)
 	sess.SetShard(*s.GetShard())
@@ -698,7 +704,7 @@ func (s *clientSession) dialer(query string) error {
 	if s.GetResumeUrl() != nil {
 		url = *s.GetResumeUrl()
 	} else {
-		gateway, err := requestutil.GetGatewayUrl()
+		gateway, err := requestutil.GetGatewayUrl(s.version)
 		if err != nil {
 			return err
 		}
@@ -717,7 +723,7 @@ func (s *clientSession) initDialer(query string) error {
 		return errors.New("token is required for bot init")
 	}
 	url := ""
-	gateway, err := requestutil.GetGatewayBot(*s.GetToken())
+	gateway, err := requestutil.GetGatewayBot(*s.GetToken(), s.version)
 	if err != nil {
 		return err
 	}

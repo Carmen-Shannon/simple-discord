@@ -46,15 +46,18 @@ func main() {
         return
     }
 
+
+    version := "1.0.0" // you can just omit this, or pass an empty string as the first argument to `NewBot`
     // make sure your token is labelled TOKEN in your env
     token := os.GetEnv("TOKEN")
     if token == "" {
         log.Fatalf("token not found")
         return
     }
+    intents := []structs.Intent{structs.MessageContentIntent}
 
     // init a new client instance
-    client, stopChan, err := bot.NewBot(token, intents)
+    client, stopChan, err := bot.NewBot(version, token, intents)
     if err != nil {
         log.Fatalf("error creating session: %v", err)
         return
@@ -89,7 +92,7 @@ func main() {
     testCommand := func(sess session.ClientSession, p payload.SessionPayload) error {
         // I set up this ValidateEvent function to be able to decode the payload data into an actual interaction event
         // feel free to use it or use `interactionEvent, ok := p.Data.(receiveevents.InteractionCreateEvent)
-        interactionEvent, ok := payload.ValidateEvent[receiveevents.InteractionCreateEvent](p)
+        interactionEvent, ok := payload.ValidateEvent[receiveevents.InteractionCreateEvent](p.Data)
         if !ok {
             return fmt.Errorf("could not assert payload.Data to InteractionCreateEvent")
         }
@@ -225,7 +228,7 @@ func main() {
 ```
 
 ## Version
-Latest stable release is `v0.5.0`
+Latest stable release is `v0.5.1`
 
 ## In-Progress
 

@@ -55,13 +55,13 @@ var _ Bot = (*bot)(nil)
 //	    log.Fatalf("error creating bot: %v", err)
 //	}
 //	<-stopChan
-func NewBot(token string, intents []structs.Intent) (newBot Bot, stopChan chan struct{}, err error) {
+func NewBot(version, token string, intents []structs.Intent) (newBot Bot, stopChan chan struct{}, err error) {
 	b := &bot{
 		mu:       &sync.Mutex{},
 		sessions: make(map[int]session.ClientSession),
 	}
 
-	initialSession := session.NewClientSession()
+	initialSession := session.NewClientSession(version)
 	initialSession.SetToken(token)
 	initialSession.SetIntents(intents...)
 	initialSession.SetShard(0)
@@ -83,7 +83,7 @@ func NewBot(token string, intents []structs.Intent) (newBot Bot, stopChan chan s
 		}
 
 		shardID := i
-		sess := session.NewClientSession()
+		sess := session.NewClientSession(version)
 		sess.SetToken(token)
 		sess.SetIntents(intents...)
 		sess.SetShard(shardID)
