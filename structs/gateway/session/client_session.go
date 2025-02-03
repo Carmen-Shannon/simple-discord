@@ -16,7 +16,7 @@ import (
 	receiveevents "github.com/Carmen-Shannon/simple-discord/structs/gateway/receive_events"
 	sendevents "github.com/Carmen-Shannon/simple-discord/structs/gateway/send_events"
 	"github.com/Carmen-Shannon/simple-discord/util"
-	requestutil "github.com/Carmen-Shannon/simple-discord/util/request_util"
+	"github.com/Carmen-Shannon/simple-discord/util/request_util"
 	"github.com/coder/websocket"
 )
 
@@ -300,7 +300,7 @@ func (s *clientSession) Send(messageOptions dto.MessageOptions, response bool) (
 		return nil, err
 	}
 
-	msg, err := requestutil.CreateMessage(*reqDto, token)
+	msg, err := request_util.CreateMessage(*reqDto, token)
 	if err != nil {
 		return nil, err
 	}
@@ -704,7 +704,7 @@ func (s *clientSession) dialer(query string) error {
 	if s.GetResumeUrl() != nil {
 		url = *s.GetResumeUrl()
 	} else {
-		gateway, err := requestutil.GetGatewayUrl(s.version)
+		gateway, err := request_util.GetGatewayUrl(s.version)
 		if err != nil {
 			return err
 		}
@@ -723,7 +723,7 @@ func (s *clientSession) initDialer(query string) error {
 		return errors.New("token is required for bot init")
 	}
 	url := ""
-	gateway, err := requestutil.GetGatewayBot(*s.GetToken(), s.version)
+	gateway, err := request_util.GetGatewayBot(*s.GetToken(), s.version)
 	if err != nil {
 		return err
 	}
@@ -770,7 +770,7 @@ func (s *clientSession) interactionReply(interactionOptions structs.InteractionR
 		WithResponse: util.ToPtr(true),
 	}
 	response := interactionOptions.InteractionResponse()
-	if _, err := requestutil.CreateInteractionResponse(interactionID, interactionToken, token, reqDto, *response); err != nil {
+	if _, err := request_util.CreateInteractionResponse(interactionID, interactionToken, token, reqDto, *response); err != nil {
 		return err
 	}
 	return nil

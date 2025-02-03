@@ -228,7 +228,7 @@ func main() {
 ```
 
 ## Version
-Latest stable release is `v0.6.1`
+Latest stable release is `v0.6.2`
 
 ## In-Progress
 
@@ -247,9 +247,9 @@ This list will change as I want to add things
 - [x] Event handler
 - [x] Shard management
 - [ ] HTTP requests
-    - [ ] Rate Limiting
-        - [ ] Global Rate Limiting
-        - [ ] Local Rate Limiting
+    - [x] Rate Limiting
+        - [x] Global Rate Limiting
+        - [x] Local Rate Limiting
     - [x] Application requests
     - [x] Application Role Connection Metadata requests
     - [x] Audit Log requests

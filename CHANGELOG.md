@@ -45,3 +45,6 @@
 
 ## [v0.6.1]
 - Fixed mp4 to mp3 conversion, still some work to be done here I think as it's kind of inneficient to convert from mp3 to mp4
+
+## [v0.6.2]
+- Added a global and local rate limiter for all requests that use `HttpRequest` from `general_requests` in the request_util package

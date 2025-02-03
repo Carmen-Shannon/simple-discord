@@ -1,4 +1,4 @@
-package requestutil
+package request_util
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ func GetGuildAuditLog(auditLogParams dto.GetGuildAuditLogDto, token string) (*st
 	headers := map[string]string{
 		"Authorization": "Bot " + token,
 	}
-	
+
 	query := util.BuildQueryString(auditLogParams)
 	path += query
 

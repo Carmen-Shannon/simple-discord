@@ -1,4 +1,4 @@
-package requestutil
+package request_util
 
 import (
 	"bytes"
