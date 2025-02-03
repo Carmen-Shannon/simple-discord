@@ -102,7 +102,9 @@ func NewVoiceSession() VoiceSession {
 	}
 	vs.ctx, vs.cancel = context.WithCancel(context.Background())
 
-	vs.audioPlayer = NewAudioPlayer(vs.speaking, vs.selectProtocol)
+	vs.audioPlayer = NewAudioPlayer()
+	vs.audioPlayer.SetSpeakingFunc(vs.speaking)
+	vs.audioPlayer.SetSelectProtocolFunc(vs.selectProtocol)
 
 	vs.closeGroup.AddChannel("connectReady")
 	vs.closeGroup.AddChannel("resumeReady")
@@ -185,6 +187,11 @@ func NewVoiceSession() VoiceSession {
 	vs.SetValidCloseErrors(io.EOF, io.ErrUnexpectedEOF, net.ErrClosed, errWsaSend, errWsaRecv)
 
 	return vs
+}
+
+func (v *voiceSession) Error(err error) {
+	wrapped := errors.Join(errors.New("voice session error: "), err)
+	v.Session.Error(wrapped)
 }
 
 func (v *voiceSession) Exit(graceful bool) error {

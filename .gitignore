@@ -1,9 +1,16 @@
+# private values
 *.env
+
+# debug files
+*.prof
+*.js
 main.go
-*.exe
 launch.json
 register_commands/*
-*.prof
+
+# build files
+*.exe
 local
 
+# including ffmpeg binaries
 !util/ffmpeg/*/*.exe

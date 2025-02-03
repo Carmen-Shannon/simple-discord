@@ -36,15 +36,15 @@ type AudioPlayer interface {
 	IsConnected() bool
 	IsPlaying() bool
 	GetSession() UdpSession
+	SetSpeakingFunc(func(bool) error)
+	SetSelectProtocolFunc(func() error)
 }
 
-func NewAudioPlayer(speakingFunc func(bool) error, selectProtocolFunc func() error) AudioPlayer {
+func NewAudioPlayer() AudioPlayer {
 	a := &audioPlayer{
-		mu:                 &sync.Mutex{},
-		session:            NewUdpSession(),
-		audioResource:      NewAudioResource(),
-		speakingFunc:       speakingFunc,
-		selectProtocolFunc: selectProtocolFunc,
+		mu:            &sync.Mutex{},
+		session:       NewUdpSession(),
+		audioResource: NewAudioResource(),
 	}
 	a.ctx, a.cancel = context.WithCancel(context.Background())
 	return a
@@ -57,20 +57,9 @@ func (a *audioPlayer) Play(path string) error {
 		}
 	} else if a.IsPlaying() {
 		return errors.New("audio is already playing")
-	} else if a.IsConnected() {
-		a.mu.Lock()
-		a.audioResource.Exit()
-		a.audioResource = NewAudioResource()
-		a.mu.Unlock()
 	}
 
-	go func() {
-		if err := a.audioResource.RegisterFile(path); err != nil {
-			a.session.Error(err)
-			return
-		}
-	}()
-
+	go a.audioResource.RegisterFile(path)
 	go a.playAudio()
 	return nil
 }
@@ -136,6 +125,18 @@ func (a *audioPlayer) GetSession() UdpSession {
 	return a.session
 }
 
+func (a *audioPlayer) SetSpeakingFunc(f func(bool) error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.speakingFunc = f
+}
+
+func (a *audioPlayer) SetSelectProtocolFunc(f func() error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.selectProtocolFunc = f
+}
+
 func (a *audioPlayer) playAudio() {
 	if err := a.speakingFunc(true); err != nil {
 		a.session.Error(err)
@@ -182,6 +183,11 @@ func (a *audioPlayer) playAudio() {
 			a.session.Error(err)
 			return
 		}
+		// close the audio resource when audio finishes playing, clearing the resource for the next invocation
+		a.audioResource.Exit()
+		a.mu.Lock()
+		a.audioResource = NewAudioResource()
+		a.mu.Unlock()
 	}
 }
 
@@ -196,7 +202,7 @@ func (a *audioPlayer) prepAudio(sendChan chan []byte, frameSize int) error {
 	ssrc := a.session.GetUdpData().SSRC
 
 	header := payload.NewRtpHeader(seq, timestamp, uint32(ssrc))
-	stream := a.audioResource.GetStream()
+	stream := a.audioResource.GetOpusStream()
 
 	for {
 		select {
@@ -218,9 +224,9 @@ func (a *audioPlayer) prepAudio(sendChan chan []byte, frameSize int) error {
 						}
 
 						select {
-						case sendChan <- packet.Bytes():
 						case <-a.ctx.Done():
 							return nil
+						case sendChan <- packet.Bytes():
 						}
 
 						seq++
@@ -241,9 +247,9 @@ func (a *audioPlayer) prepAudio(sendChan chan []byte, frameSize int) error {
 			}
 
 			select {
-			case sendChan <- packet.Bytes():
 			case <-a.ctx.Done():
 				return nil
+			case sendChan <- packet.Bytes():
 			}
 
 			seq++
@@ -289,9 +295,7 @@ func (a *audioPlayer) encrypt(packet []byte, rtpHeader payload.RTPHeader, encryp
 		}
 		encryptedAudio.Write(encryptedFrame)
 	case gateway.AEAD_XCHACHA20_POLY1305:
-		chachaNonce := make([]byte, 24)
-		copy(chachaNonce[:12], headerBytes)
-		encryptedFrame, err := crypto.EncryptXChaCha20Poly1305(packet, secretKey[:], chachaNonce)
+		encryptedFrame, err := crypto.EncryptXChaCha20Poly1305(packet, secretKey[:], headerBytes, nonce)
 		if err != nil {
 			return encryptedAudio, err
 		}

@@ -62,7 +62,7 @@ type ClientSession interface {
 	Send(messageOptions dto.MessageOptions, response bool) (*structs.Message, error)
 	JoinVoice(guildID, channelID structs.Snowflake) error
 	DisconnectVoice(guildID structs.Snowflake) error
-	Play(filepath string, guildID, channelID structs.Snowflake) (AudioPlayer, error)
+	Play(filepath string, guildID, channelID structs.Snowflake) error
 	ReconnectSession() error
 	ResumeSession() error
 	RegisterCommands(commands map[string]CommandFunc)
@@ -195,6 +195,11 @@ func (s *clientSession) Exit(graceful bool) error {
 	s.CloseResumeReceived()
 
 	return s.Session.Exit(graceful)
+}
+
+func (s *clientSession) Error(err error) {
+	wrapped := errors.Join(errors.New("client session error: "), err)
+	s.Session.Error(wrapped)
 }
 
 func (s *clientSession) Dial(init bool) error {
@@ -370,20 +375,22 @@ func (s *clientSession) DisconnectVoice(guildID structs.Snowflake) error {
 	return nil
 }
 
-func (s *clientSession) Play(filepath string, guildID, channelID structs.Snowflake) (AudioPlayer, error) {
+func (s *clientSession) Play(filepath string, guildID, channelID structs.Snowflake) error {
 	vs := s.GetVoiceSession(guildID)
 	if vs == nil {
 		if err := s.JoinVoice(guildID, channelID); err != nil {
-			return nil, err
+			return err
 		}
+
 		vs = s.GetVoiceSession(guildID)
 	}
 
-	if err := vs.GetAudioPlayer().Play(filepath); err != nil {
-		return nil, err
+	ap := vs.GetAudioPlayer()
+	if err := ap.Play(filepath); err != nil {
+		return err
 	}
 
-	return vs.GetAudioPlayer(), nil
+	return nil
 }
 
 func (s *clientSession) ReconnectSession() error {

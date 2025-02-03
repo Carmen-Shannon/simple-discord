@@ -16,3 +16,16 @@
 
 ## [v0.3.0]
 - Stabilized reconnect logic for client and voice sessions so they should now be able to keep uptime indefinitely.
+
+## [v0.4.0]
+- Updating Go version to 1.23.5
+- Fixed a garbage collection issue with the ffmpeg package, causing all binaries to be read into memory spiking memory usage.
+- Fixed an issue where the GC was not releasing resources properly back to the system.
+- Cut memory consumption by about 50% from 190MiB to >100MiB during ffmpeg processing. (still some work to be done here)
+  - as an additional note to this change, I should be able to address the issue of memory not releasing back to the OS at some point
+- Fixed multiple bugs related to the `AudioPlayer` interface.
+- Re-wrote the function to encode audio to Opus, separating it into two branches
+  - One branch will process the static audio file with ffmpeg, sending PCM frames to a channel.
+  - The other branch will listen for these frames on the channel, and process them to Opus encoded audio frames, sending them to another channel.
+- Added XChaCha-Poly1305 encryption
+- Removed ffprobe binaries, ignoring metadata for now since it wasn't being used anyways.

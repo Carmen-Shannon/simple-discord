@@ -2,6 +2,7 @@ package ffmpeg
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"embed"
 	"encoding/binary"
@@ -16,16 +17,21 @@ import (
 	"github.com/Carmen-Shannon/gopus"
 )
 
-//go:embed linux/ffmpeg linux/ffmpeg-arm windows/ffmpeg.exe macos/ffmpeg
-//go:embed linux/ffprobe linux/ffprobe-arm windows/ffprobe.exe macos/ffprobe
-var ffmpegFiles embed.FS
+//go:embed linux/ffmpeg
+var linuxBinary embed.FS
+
+//go:embed linux/ffmpeg-arm
+var linuxArmBinary embed.FS
+
+//go:embed windows/ffmpeg.exe
+var windowsBinary embed.FS
+
+//go:embed macos/ffmpeg
+var macosBinary embed.FS
 
 var (
-	ffmpegPath  string
-	ffprobePath string
-	FfmpegCmd   *exec.Cmd
-	FfprobeCmd  *exec.Cmd
-	once        sync.Once
+	ffmpegPath string
+	once       sync.Once
 )
 
 func getFFmpegPath() (string, error) {
@@ -35,37 +41,29 @@ func getFFmpegPath() (string, error) {
 		if err != nil {
 			return
 		}
-		ffprobePath, err = extractBinary("ffprobe")
 	})
 	return ffmpegPath, err
 }
 
-func getFFprobePath() (string, error) {
-	var err error
-	once.Do(func() {
-		ffmpegPath, err = extractBinary("ffmpeg")
-		if err != nil {
-			return
-		}
-		ffprobePath, err = extractBinary("ffprobe")
-	})
-	return ffprobePath, err
-}
-
 func extractBinary(name string) (string, error) {
+	var fs embed.FS
 	var path string
 	switch runtime.GOOS {
 	case "linux":
 		switch runtime.GOARCH {
 		case "arm", "arm64":
 			path = fmt.Sprintf("linux/%s-arm", name)
+			fs = linuxArmBinary
 		default:
 			path = fmt.Sprintf("linux/%s", name)
+			fs = linuxBinary
 		}
 	case "windows":
 		path = fmt.Sprintf("windows/%s.exe", name)
+		fs = windowsBinary
 	case "darwin":
 		path = fmt.Sprintf("macos/%s", name)
+		fs = macosBinary
 	default:
 		return "", fmt.Errorf("unsupported operating system: %s", runtime.GOOS)
 	}
@@ -78,7 +76,7 @@ func extractBinary(name string) (string, error) {
 		return binaryPath, nil
 	}
 
-	data, err := ffmpegFiles.ReadFile(path)
+	data, err := fs.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -86,6 +84,16 @@ func extractBinary(name string) (string, error) {
 	if err := os.WriteFile(binaryPath, data, 0755); err != nil {
 		return "", err
 	}
+
+	// un-embed the binaries, setting the embedded vars to nil
+	macosBinary = embed.FS{}
+	windowsBinary = embed.FS{}
+	linuxBinary = embed.FS{}
+	linuxArmBinary = embed.FS{}
+
+	// make it purr
+	data = nil
+	runtime.GC()
 
 	return binaryPath, nil
 }
@@ -102,20 +110,39 @@ func resolvePath(inputPath string) (string, error) {
 	return absPath, nil
 }
 
-func ConvertFileToOpus(inputPath string, outputChan chan []byte, ctx context.Context) error {
+// ConvertFileToPCM will take a static file path to an existing audio file in the appropriate format and convert it to PCM.
+//
+// This function is non-blocking and will send the PCM data to the output channel as long as the channel remains open, or the context isn't cancelled.
+//
+// Parameters:
+//   - ctx: the context to listen for cancellation signals on. if the context is cancelled, this function will kill the ffmpeg process.
+//   - inputPath: the path to the audio file to convert, valid audio formats are MP3, FLAC, WAV, and OGG. ultimately anything that ffmpeg can extract PCM from.
+//   - outputChan: the channel you want to send the PCM data to. this is non-blocking and this channel will never be closed by this function.
+//   - closeOutputChan: a function that will close the output channel when called. this is used to signal the end of the PCM data stream.
+//
+// Returns:
+//   - <-chan struct{}: a channel that will be closed when the first packet is sent to the output channel.
+//   - error: if an error occurs during the conversion process, this function will return an error. if the context is cancelled, this function will return nil.
+func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []byte, closeOutputChan func()) (<-chan struct{}, error) {
+	readySignal := make(chan struct{})
+	closeReadySignal := sync.Once{}
+	closeFunc := func() {
+		closeReadySignal.Do(func() {
+			close(readySignal)
+		})
+	}
 	ffmpegPath, err := getFFmpegPath()
 	if err != nil {
-		return fmt.Errorf("failed to get ffmpeg path: %w", err)
+		return nil, fmt.Errorf("failed to get ffmpeg path: %w", err)
 	}
 
 	// Resolve the input path
 	absInputPath, err := resolvePath(inputPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve input path: %w", err)
+		return nil, fmt.Errorf("failed to resolve input path: %w", err)
 	}
 
-	// Create a shell command to run FFmpeg to convert MP3 to raw PCM
-	FfmpegCmd = exec.Command(
+	ffmpegCmd := exec.Command(
 		ffmpegPath,
 		"-hide_banner",
 		"-i", absInputPath,
@@ -124,26 +151,74 @@ func ConvertFileToOpus(inputPath string, outputChan chan []byte, ctx context.Con
 		"-ac", "2",
 		"pipe:1",
 	)
-	ffmpegOut, err := FfmpegCmd.StdoutPipe()
+
+	pcmOut, err := ffmpegCmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("failed to create stdout pipe: %w", err)
+		return nil, fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 
-	ffmpegBuf := bufio.NewReaderSize(ffmpegOut, 16384)
-
-	// Start the FFmpeg command
-	err = FfmpegCmd.Start()
+	pcmBuf := bufio.NewReaderSize(pcmOut, 4096)
+	// Start the ffmpeg command
+	err = ffmpegCmd.Start()
 	if err != nil {
-		return fmt.Errorf("failed to start ffmpeg: %w", err)
+		return nil, fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
-	// Define frame size and channels
+	go func() {
+		defer ffmpegCmd.Process.Kill()
+		defer ffmpegCmd.Process.Release()
+		defer closeFunc()
+		defer closeOutputChan()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				frameBuf := make([]byte, 3840)
+				n, err := io.ReadFull(pcmBuf, frameBuf)
+				if err != nil {
+					if err == io.EOF || err == io.ErrUnexpectedEOF {
+						if n > 0 {
+							outputChan <- frameBuf[:n]
+						}
+						return
+					}
+					return
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				case outputChan <- frameBuf[:n]:
+					closeFunc()
+				}
+			}
+		}
+	}()
+
+	return readySignal, nil
+}
+
+// ConvertPcmBytesToOpus will take bytes coming from the inputChan and convert them to Opus encoded audio frames. The Opus encoded frames are then sent through the outputChan.
+// This function is non-blocking and will send the Opus data to the output channel as long as the channel remains open, or the context isn't cancelled.
+// This function WILL close the `outputChan` given to it, when it detects that it reaches the end of the input channel, or the PCM data has been read entirely.
+//
+// Parameters:
+//   - ctx: the context to listen for cancellation signals on. if the context is cancelled, this function will stop processing the input channel.
+//   - inputChan: the channel you want to receive the PCM data from.
+//   - outputChan: the channel you want to send the Opus data to. this channel will be closed by this function when the input channel is closed.
+//   - closeOutputChan: a function that will close the output channel when called. this is used to signal the end of the Opus data stream.
+//
+// Returns:
+//   - error: if an error occurs during the conversion process, this function will return an error. if the context is cancelled, this function will return nil.
+func ConvertPcmBytesToOpus(ctx context.Context, inputChan chan []byte, outputChan chan []byte, closeOutputChan func()) error {
+	sampleRate := 48000
 	frameSize := 960
 	channels := 2
 	maxBytes := frameSize * channels * 2
 
-	// Create Opus encoder
-	opusEncoder, err := gopus.NewEncoder(48000, 2, gopus.Audio)
+	opusEncoder, err := gopus.NewEncoder(sampleRate, channels, gopus.Audio)
 	if err != nil {
 		return fmt.Errorf("failed to create Opus encoder: %w", err)
 	}
@@ -151,163 +226,38 @@ func ConvertFileToOpus(inputPath string, outputChan chan []byte, ctx context.Con
 	opusEncoder.SetVbr(false)
 
 	go func() {
-		defer FfmpegCmd.Process.Kill()
-		defer func() {
-			if r := recover(); r != nil {
-				if r == "send on closed channel" {
-					return
-				} else {
-					fmt.Println(r)
-				}
-			}
-		}()
-		defer close(outputChan)
-
+		defer closeOutputChan()
+		opusOutput := make([]byte, maxBytes)
+		pcmBuf := make([]int16, frameSize*channels)
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case _, ok := <-outputChan:
+			case frame, ok := <-inputChan:
 				if !ok {
 					return
 				}
-				return
-			default:
-				audiobuf := make([]int16, frameSize*channels)
-				err = binary.Read(ffmpegBuf, binary.LittleEndian, &audiobuf)
-				if err == io.EOF || err == io.ErrUnexpectedEOF {
-					return
-				}
+				frameReader := bytes.NewReader(frame)
+				err = binary.Read(frameReader, binary.LittleEndian, &pcmBuf)
 				if err != nil {
-					fmt.Println("Error reading from ffmpeg stdout:", err)
+					if err == io.EOF || err == io.ErrUnexpectedEOF {
+						return
+					}
 					return
 				}
 
-				// Encode PCM to Opus
-				out := make([]byte, maxBytes)
-				out, err := opusEncoder.Encode(audiobuf, frameSize, out)
+				opusOutput, err = opusEncoder.Encode(pcmBuf, frameSize, opusOutput)
 				if err != nil {
-					fmt.Println("Error encoding PCM to Opus:", err)
 					return
 				}
 
 				select {
 				case <-ctx.Done():
 					return
-				case outputChan <- out:
+				case outputChan <- opusOutput:
 				}
 			}
 		}
 	}()
-
 	return nil
 }
-
-// func GetOpusMetadataFromBytes(input []byte) (*voice.AudioMetadata, error) {
-// 	ffprobePath, err := getFFprobePath()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
-// 	}
-
-// 	ffmpegCmd := exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", "pipe:0")
-// 	ffmpegCmd.Stdin = bytes.NewReader(input)
-// 	var out bytes.Buffer
-// 	var stderr bytes.Buffer
-// 	ffmpegCmd.Stdout = &out
-// 	ffmpegCmd.Stderr = &stderr
-// 	err = ffmpegCmd.Run()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
-// 	}
-
-// 	var metadata struct {
-// 		Format struct {
-// 			Duration string `json:"duration"`
-// 			BitRate  string `json:"bit_rate"`
-// 		} `json:"format"`
-// 		Streams []struct {
-// 			SampleRate string `json:"sample_rate"`
-// 			Channels   int    `json:"channels"`
-// 		} `json:"streams"`
-// 	}
-
-// 	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
-// 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-// 	}
-
-// 	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse duration: %w", err)
-// 	}
-
-// 	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
-// 	}
-
-// 	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
-// 	}
-
-// 	return &voice.AudioMetadata{
-// 		DurationMs: duration * 1000, // Convert to milliseconds
-// 		Bitrate:    bitrate,
-// 		SampleRate: sampleRate,
-// 		Channels:   metadata.Streams[0].Channels,
-// 	}, nil
-// }
-
-// func GetOpusMetadataFromFile(filePath string) (*voice.AudioMetadata, error) {
-// 	ffprobePath, err := getFFprobePath()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get ffprobe path: %w", err)
-// 	}
-
-// 	FfprobeCmd = exec.Command(ffprobePath, "-v", "error", "-show_entries", "format=duration,bit_rate", "-show_entries", "stream=sample_rate,channels", "-of", "json", filePath)
-// 	var out bytes.Buffer
-// 	var stderr bytes.Buffer
-// 	FfprobeCmd.Stdout = &out
-// 	FfprobeCmd.Stderr = &stderr
-// 	err = FfprobeCmd.Run()
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to get opus metadata: %w, output: %s", err, stderr.String())
-// 	}
-
-// 	var metadata struct {
-// 		Format struct {
-// 			Duration string `json:"duration"`
-// 			BitRate  string `json:"bit_rate"`
-// 		} `json:"format"`
-// 		Streams []struct {
-// 			SampleRate string `json:"sample_rate"`
-// 			Channels   int    `json:"channels"`
-// 		} `json:"streams"`
-// 	}
-
-// 	if err := json.Unmarshal(out.Bytes(), &metadata); err != nil {
-// 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
-// 	}
-
-// 	duration, err := strconv.ParseFloat(metadata.Format.Duration, 64)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse duration: %w", err)
-// 	}
-
-// 	bitrate, err := strconv.Atoi(metadata.Format.BitRate)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse bitrate: %w", err)
-// 	}
-
-// 	sampleRate, err := strconv.Atoi(metadata.Streams[0].SampleRate)
-// 	if err != nil {
-// 		return nil, fmt.Errorf("failed to parse sample rate: %w", err)
-// 	}
-
-// 	return &voice.AudioMetadata{
-// 		DurationMs: duration * 1000, // Convert to milliseconds
-// 		Bitrate:    bitrate,
-// 		SampleRate: sampleRate,
-// 		Channels:   metadata.Streams[0].Channels,
-// 	}, nil
-// }

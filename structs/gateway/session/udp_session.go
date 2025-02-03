@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -116,6 +115,11 @@ func (u *udpSession) Exit(graceful bool) error {
 	return u.Session.Exit(graceful)
 }
 
+func (u *udpSession) Error(err error) {
+	wrapped := errors.Join(errors.New("udp session error: "), err)
+	u.Session.Error(wrapped)
+}
+
 func (u *udpSession) Discover() error {
 	return u.eventHandler.HandleEvent(u, &payload.DiscoveryPacket{PacketType: 0})
 }
@@ -152,7 +156,6 @@ func (u *udpSession) KeepAlive() {
 			u.mu.Unlock()
 
 			u.Write(packet, false)
-			fmt.Printf("packets sent: %d, bytes sent: %d\n", u.sentPackets, u.sentBytes)
 		}
 	}
 }

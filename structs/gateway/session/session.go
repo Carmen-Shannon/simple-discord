@@ -535,8 +535,8 @@ func (s *session) SetWriteLimit(limit int) {
 
 func write[T any](ctx context.Context, channel chan T, data T) {
 	select {
-	case channel <- data:
 	case <-ctx.Done():
 		return
+	case channel <- data:
 	}
 }

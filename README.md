@@ -17,10 +17,10 @@ simple-discord is designed to be a "simple" to use framework for interfacing wit
     - Currently only works with static files, should work with any PCM audio format ffmpeg supports.
 
 ## Installation
-To run the project, simply install Go v1.22.3 or above, and run the following command to install the latest package into your project:
+To run the project, simply install Go v1.23.5 or above, and run the following command to install the latest package into your project:
 
 # NOTE
-The ffmpeg binaries are included in this package, as well as the forked gopus package. This should allow devs to build bots in a platform agnostic way, without having to perform additional steps to set up their environment.
+The ffmpeg binaries are included in this package, as well as the forked gopus package. This should allow devs to build bots in a platform agnostic way, without having to perform additional steps to set up their environment. The ffmpeg binaries WILL be loaded into memory if your bot has the proper intents to handle voice connections and audio playback, and the ffmpeg process is invoked. The binaries will be ignored and never loaded into memory if the ffmpeg process is never needed.
 
 ```sh
 go get github.com/Carmen-Shannon/simple-discord@latest
@@ -225,7 +225,7 @@ func main() {
 ```
 
 ## Version
-Latest stable release is `v0.3.0`
+Latest stable release is `v0.4.0`
 
 ## In-Progress
 

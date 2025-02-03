@@ -5,16 +5,19 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/Carmen-Shannon/simple-discord/structs/gateway/session"
 	"github.com/Carmen-Shannon/simple-discord/structs"
-	"github.com/Carmen-Shannon/simple-discord/util/ffmpeg"
+	"github.com/Carmen-Shannon/simple-discord/structs/gateway/session"
 )
 
+// Bot is the interface for the bot package. It allows users to access the bot's sessions, register commands, and register listeners.
+// You should use `NewBot` to create a new bot instance, and then use the session to interact with the Discord API.
+// The bot will potentially have multiple sessions, all self-managed. The reason for this is auto-sharding, and how the bot handles sharding sessions upon initialization.
+// Auto-sharding is controlled by the get gateway bot response from the Discord API, and if your bot is in a large number of guilds you will have more shards.
+// Sharding is generally something you don't need to think about, since when you create a `CommandFunc` or `Listener`, the `ClientSession` used in the function will always be the one handling the interaction.
 type Bot interface {
 	GetSession(shardID int) (session.ClientSession, error)
 	GetSessionByGuildID(guildID structs.Snowflake) session.ClientSession
@@ -23,8 +26,9 @@ type Bot interface {
 }
 
 type bot struct {
+	mu *sync.Mutex
+
 	sessions map[int]session.ClientSession
-	mu       sync.RWMutex
 }
 
 var _ Bot = (*bot)(nil)
@@ -40,9 +44,9 @@ var _ Bot = (*bot)(nil)
 //   - intents: A slice of intents specifying the intents the bot needs to have in order to function.
 //
 // Returns:
-//   - Bot: The created bot instance.
-//   - <-chan struct{}: A channel that will be closed when the bot is stopped.
-//   - error: An error if the bot could not be created.
+//   - newBot: The created bot instance.
+//   - stopChan: A channel that will be closed when the bot is stopped.
+//   - err: An error if the bot could not be created.
 //
 // Example:
 //
@@ -51,8 +55,9 @@ var _ Bot = (*bot)(nil)
 //	    log.Fatalf("error creating bot: %v", err)
 //	}
 //	<-stopChan
-func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error) {
+func NewBot(token string, intents []structs.Intent) (newBot Bot, stopChan chan struct{}, err error) {
 	b := &bot{
+		mu:       &sync.Mutex{},
 		sessions: make(map[int]session.ClientSession),
 	}
 
@@ -60,22 +65,13 @@ func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error
 	initialSession.SetToken(token)
 	initialSession.SetIntents(intents...)
 	initialSession.SetShard(0)
+	initialSession.SetCb(b.reconnectCb)
 	if err := initialSession.Dial(true); err != nil {
 		return nil, nil, err
 	}
-	initialSession.SetCb(b.reconnectCb)
 
 	shards := *initialSession.GetShards()
 	maxConcurrency := *initialSession.GetMaxConcurrency()
-
-
-	// initialSession := session.NewSession(token, intents, nil)
-	// if err := initialSession.Connect(true); err != nil {
-	// 	return nil, nil, err
-	// }
-	// initialSession.SetReconnectCb(b.reconnectCb)
-	// shards := *initialSession.GetShards()
-	// maxConcurrency := *initialSession.GetMaxConcurrency()
 
 	// Add the initial session to the sessions map
 	b.sessions[*initialSession.GetShard()] = initialSession
@@ -100,7 +96,7 @@ func NewBot(token string, intents []structs.Intent) (Bot, <-chan struct{}, error
 		b.sessions[shardID] = sess
 	}
 
-	stopChan := make(chan struct{})
+	stopChan = make(chan struct{})
 	go func() {
 		if err := b.run(stopChan); err != nil {
 			fmt.Printf("error running bot: %v\n", err)
@@ -150,8 +146,8 @@ func (b *bot) exit() error {
 //	    log.Fatalf("error sending message: %v", err)
 //	}
 func (b *bot) GetSession(shardID int) (session.ClientSession, error) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	session, ok := b.sessions[shardID]
 	if !ok {
@@ -178,8 +174,8 @@ func (b *bot) GetSession(shardID int) (session.ClientSession, error) {
 //	    log.Fatalf("session not found for guild ID")
 //	}
 func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) session.ClientSession {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for _, session := range b.sessions {
 
@@ -221,8 +217,8 @@ func (b *bot) GetSessionByGuildID(guildID structs.Snowflake) session.ClientSessi
 //	}
 //	bot.RegisterCommands(commands)
 func (b *bot) RegisterCommands(commands map[string]session.CommandFunc) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for _, session := range b.sessions {
 		session.RegisterCommands(commands)
@@ -292,8 +288,8 @@ func (b *bot) RegisterCommands(commands map[string]session.CommandFunc) {
 //   - WebhooksUpdateListener = "WEBHOOKS_UPDATE"
 //   - PresenceUpdateListener = "PRESENCE_UPDATE"
 func (b *bot) RegisterListeners(listeners map[session.Listener]session.CommandFunc) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
 	for _, session := range b.sessions {
 		session.RegisterListeners(listeners)
@@ -313,28 +309,6 @@ func (b *bot) run(stopChan chan struct{}) error {
 	}()
 
 	<-stop
-
-	// this just doesn't work tbh need to find a solution, seems to be intermittently holding ffmpeg in-memory after it finishes using it
-	if ffmpeg.FfprobeCmd != nil && ffmpeg.FfprobeCmd.Process != nil {
-		if err := ffmpeg.FfprobeCmd.Process.Signal(syscall.Signal(0)); err == nil {
-			fmt.Println("ffprobe process is running")
-			if err := ffmpeg.FfprobeCmd.Process.Kill(); err != nil {
-				fmt.Printf("error killing ffprobe process: %v\n", err)
-			} else {
-				fmt.Println("ffprobe process terminated successfully")
-			}
-		}
-	}
-	if ffmpeg.FfmpegCmd != nil && ffmpeg.FfmpegCmd.Process != nil {
-		if err := ffmpeg.FfmpegCmd.Process.Signal(syscall.Signal(0)); err == nil {
-			fmt.Println("ffmpeg process is running")
-			if err := ffmpeg.FfmpegCmd.Process.Kill(); err != nil {
-				fmt.Printf("error killing ffmpeg process: %v\n", err)
-			} else {
-				fmt.Println("ffmpeg process terminated successfully")
-			}
-		}
-	}
 
 	// Wait for processes to terminate
 	time.Sleep(2 * time.Second)
@@ -365,16 +339,14 @@ func (b *bot) reconnectCb(sess session.ClientSession) error {
 
 func cleanupFFmpegBinaries() error {
 	tmpDir := os.TempDir()
-	binaries := []string{"ffmpeg", "ffprobe"}
+	pattern := filepath.Join(tmpDir, "ffmpeg*")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return err
+	}
 
-	for _, binary := range binaries {
-		binaryPath := filepath.Join(tmpDir, binary)
-		if runtime.GOOS == "windows" {
-			binaryPath += ".exe"
-		}
-		if err := os.Remove(binaryPath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("failed to remove binary %s: %w", binaryPath, err)
-		}
+	for _, match := range matches {
+		os.Remove(match)
 	}
 
 	return nil

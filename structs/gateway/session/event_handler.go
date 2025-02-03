@@ -1,7 +1,6 @@
 package session
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -345,50 +344,21 @@ func (e *voiceEventHandler) handleBinaryEvent(s VoiceSession, p payload.BinaryVo
 }
 
 func (e *udpEventHandler) HandleEvent(s UdpSession, p payload.Payload) error {
-	if dp, ok := p.(*payload.DiscoveryPacket); ok {
-		return e.handleDiscoveryEvent(s, *dp)
-	}
-	if vp, ok := p.(*payload.VoicePacket); ok {
-		return e.handleVoicePacketEvent(s, *vp)
-	}
-	if _, ok := p.(*payload.SenderReportPacket); ok {
-		// sender report packet, currently has no use when receiving
-		return nil
-	}
-	return errors.New("invalid udp payload type for event handler")
-}
-
-func (e *udpEventHandler) handleDiscoveryEvent(s UdpSession, p payload.DiscoveryPacket) error {
-	if s.IsDiscovered() {
-		return nil
-	}
-
-	var packet payload.DiscoveryPacket
-	// if we have an empty payload, it means we want to send a discovery packet
-	if p.PacketType == 0 {
-		packet.PacketType = 0x1
-		packet.Length = 70
-		packet.SSRC = uint32(s.GetUdpData().SSRC)
-		packet.Address = [64]byte{}
-
-		packetBytes, err := packet.Marshal()
-		if err != nil {
-			return err
+	go func() {
+		if dp, ok := p.(*payload.DiscoveryPacket); ok {
+			if err := handleDiscoveryEvent(s, *dp); err != nil {
+				s.Error(err)
+			}
 		}
-
-		s.Write(packetBytes, true)
-		return nil
-	}
-
-	// if the payload is not empty, we received it
-	s.GetUdpData().Address = string(bytes.Trim(p.Address[:], "\x00"))
-	s.GetUdpData().Port = int(p.Port)
-	s.GetUdpData().SSRC = int(p.SSRC)
-	s.CloseDiscoveryReady()
-	return nil
-}
-
-func (e *udpEventHandler) handleVoicePacketEvent(s UdpSession, p payload.VoicePacket) error {
-	// receiving voice packets currently just does nothing
+		if vp, ok := p.(*payload.VoicePacket); ok {
+			if err := handleVoicePacketEvent(s, *vp); err != nil {
+				s.Error(err)
+			}
+		}
+		if _, ok := p.(*payload.SenderReportPacket); ok {
+			// sender report packet, currently has no use when receiving
+			return
+		}
+	}()
 	return nil
 }
