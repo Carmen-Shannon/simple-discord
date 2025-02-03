@@ -40,6 +40,7 @@ var _ Bot = (*bot)(nil)
 // require more CPU to handle the load.
 //
 // Parameters:
+//   - version: The version of the bot. You can set this as an empty string, for a default value of 1.
 //   - token: The bot token used for authentication with the Discord API.
 //   - intents: A slice of intents specifying the intents the bot needs to have in order to function.
 //
