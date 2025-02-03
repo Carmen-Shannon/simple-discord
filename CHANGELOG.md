@@ -39,3 +39,6 @@
 
 ## [v0.5.2]
 - Fixing documentation.
+
+## [v0.6.0]
+- Added mp4 to mp3 conversion with ffmpeg

@@ -12,7 +12,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/Carmen-Shannon/gopus"
 )
@@ -110,6 +112,49 @@ func resolvePath(inputPath string) (string, error) {
 	return absPath, nil
 }
 
+// ConvertMp4ToMp3 will take a static file path ending in .mp4 and convert it into a temporary .mp3 file.
+// The caller of this function should handle cleaning up the temporary file after it is done with it.
+//
+// Parameters:
+//   - inputPath: the path to the mp4 file to convert.
+//
+// Returns:
+//   - tempPath: the path to the temporary mp3 file.
+//   - err: if an error occurs during the conversion process, this function will return an error.
+func ConvertMp4ToMp3(inputPath string) (tempPath string, err error) {
+	ffmpegPath, err := getFFmpegPath()
+	if err != nil {
+		return "", err
+	}
+
+	// Resolve the input path
+	absInputPath, err := resolvePath(inputPath)
+	if err != nil {
+		return "", err
+	}
+
+	tempDir := os.TempDir()
+	randomFileName := fmt.Sprintf("temp-%d.mp3", time.Now().UnixNano())
+	tempFilePath := filepath.Join(tempDir, randomFileName)
+
+	// Create the FFmpeg command
+	cmd := exec.Command(
+		ffmpegPath,
+		"-i", absInputPath,
+		"-vn",
+		tempFilePath,
+	)
+
+	// Run the command and wait for it to complete
+	err = cmd.Run()
+	if err != nil {
+		return "", fmt.Errorf("failed to convert mp4 to mp3: %w", err)
+	}
+
+	// Return the path to the temporary file
+	return tempFilePath, nil
+}
+
 // ConvertFileToPCM will take a static file path to an existing audio file in the appropriate format and convert it to PCM.
 //
 // This function is non-blocking and will send the PCM data to the output channel as long as the channel remains open, or the context isn't cancelled.
@@ -141,11 +186,20 @@ func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []b
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve input path: %w", err)
 	}
+	if strings.Contains(inputPath, ".mp4") {
+		tempPath, err := ConvertMp4ToMp3(inputPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert mp4 to mp3: %w", err)
+		}
+		defer os.Remove(tempPath)
+		absInputPath = tempPath
+	}
 
 	ffmpegCmd := exec.Command(
 		ffmpegPath,
 		"-hide_banner",
 		"-i", absInputPath,
+		"-acodec", "pcm_s16le",
 		"-f", "s16le",
 		"-ar", "48000",
 		"-ac", "2",
