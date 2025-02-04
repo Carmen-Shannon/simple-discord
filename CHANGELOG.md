@@ -52,3 +52,6 @@
 ## [v0.6.3]
 - Fixed the `Interaction.Data` for `InteractionCreateEvent` structs.
 - Removed a TODO from `request_util`.
+
+## [v0.6.4]
+- Fixed the `ClientSession.Play` call not properly exiting the audio player if ffmpeg fails.
