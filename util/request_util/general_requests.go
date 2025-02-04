@@ -24,7 +24,6 @@ type rateLimit struct {
 	Global     bool    `json:"global"`
 }
 
-// TODO: Handle rate limiting - https://discord.com/developers/docs/topics/rate-limits, I need to implement a global rate limiter and some "clients" that can properly handle rate limits
 func HttpRequest(method string, path string, headers map[string]string, body []byte) ([]byte, error) {
 	localRateLimit := globalRateLimit
 	client := &http.Client{}

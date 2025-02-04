@@ -48,3 +48,7 @@
 
 ## [v0.6.2]
 - Added a global and local rate limiter for all requests that use `HttpRequest` from `general_requests` in the request_util package
+
+## [v0.6.3]
+- Fixed the `Interaction.Data` for `InteractionCreateEvent` structs.
+- Removed a TODO from `request_util`.

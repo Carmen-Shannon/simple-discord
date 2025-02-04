@@ -12,11 +12,22 @@ type ResolvedData struct {
 	Attachments map[Snowflake]Attachment  `json:"attachments,omitempty"`
 }
 
+type ApplicationCommandInteractionDataOption struct {
+	Name    string                                    `json:"name"`
+	Type    ApplicationCommandOptionType              `json:"type"`
+	Value   any                                       `json:"value,omitempty"`
+	Options []ApplicationCommandInteractionDataOption `json:"options,omitempty"`
+	Focused *bool                                     `json:"focused,omitempty"`
+}
+
 type InteractionData struct {
-	ID       Snowflake    `json:"id"`
-	Name     string       `json:"name"`
-	Type     int          `json:"type"`
-	Resolved ResolvedData `json:"resolved,omitempty"`
+	ID       Snowflake                                 `json:"id"`
+	Name     string                                    `json:"name"`
+	Type     int                                       `json:"type"`
+	Resolved *ResolvedData                             `json:"resolved,omitempty"`
+	Options  []ApplicationCommandInteractionDataOption `json:"options,omitempty"`
+	GuildID  *Snowflake                                `json:"guild_id,omitempty"`
+	TargetID *Snowflake                                `json:"target_id,omitempty"`
 }
 
 type InteractionType int
