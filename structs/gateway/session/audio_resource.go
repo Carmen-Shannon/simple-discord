@@ -22,6 +22,7 @@ type audioResource struct {
 type AudioResource interface {
 	RegisterFile(path string)
 	Exit()
+	GetCtx() context.Context
 	GetPcmStream() chan []byte
 	GetOpusStream() chan []byte
 	ClosePcmStream()
@@ -50,6 +51,7 @@ func (a *audioResource) RegisterFile(path string) {
 		ready, err := ffmpeg.ConvertFileToPCM(a.ctx, path, a.pcmStream, a.ClosePcmStream)
 		if err != nil {
 			fmt.Printf("failed to register file: %v\n", err)
+			a.Exit()
 			return
 		}
 
@@ -76,6 +78,12 @@ func (a *audioResource) Exit() {
 	a.cancel()
 	a.ClosePcmStream()
 	a.CloseOpusStream()
+}
+
+func (a *audioResource) GetCtx() context.Context {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.ctx
 }
 
 func (a *audioResource) GetPcmStream() chan []byte {

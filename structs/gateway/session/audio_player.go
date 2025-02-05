@@ -208,6 +208,8 @@ func (a *audioPlayer) prepAudio(sendChan chan []byte, frameSize int) error {
 		select {
 		case <-a.ctx.Done():
 			return nil
+		case <-a.audioResource.GetCtx().Done():
+			return nil
 		case encoded, ok := <-stream:
 			if !ok {
 				for i := 0; i < 5; i++ {
@@ -266,6 +268,8 @@ func (a *audioPlayer) sendAudio(frameTime time.Duration, receiveChan chan []byte
 	for {
 		select {
 		case <-a.ctx.Done():
+			return nil
+		case <-a.audioResource.GetCtx().Done():
 			return nil
 		case msg, ok := <-receiveChan:
 			if !ok {

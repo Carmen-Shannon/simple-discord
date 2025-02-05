@@ -58,3 +58,6 @@
 
 ## [v0.6.5]
 - Fixed the `ffmpeg` functions deleting the original source audio files.
+
+## [v0.6.6]
+- Fixed an issue with the `AudioPlayer` hanging when the `audioResource` failed to mux.
