@@ -133,9 +133,21 @@ func ConvertMp4ToMp3(inputPath string) (tempPath string, err error) {
 		return "", err
 	}
 
-	tempDir := os.TempDir()
+	// Create/locate a `local` directory in the root directory of wherever we are running
+	// we use this directory to manage the temp mp3 file created
+	tempDir, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current working directory: %w", err)
+	}
+	localDir := filepath.Join(tempDir, "local")
+	if _, err := os.Stat(localDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(localDir, os.ModePerm); err != nil {
+			return "", fmt.Errorf("failed to create local directory: %w", err)
+		}
+	}
+
 	randomFileName := fmt.Sprintf("temp-%d.mp3", time.Now().UnixNano())
-	tempFilePath := filepath.Join(tempDir, randomFileName)
+	tempFilePath := filepath.Join(localDir, randomFileName)
 
 	// Create the FFmpeg command
 	cmd := exec.Command(
@@ -158,6 +170,8 @@ func ConvertMp4ToMp3(inputPath string) (tempPath string, err error) {
 // ConvertFileToPCM will take a static file path to an existing audio file in the appropriate format and convert it to PCM.
 //
 // This function is non-blocking and will send the PCM data to the output channel as long as the channel remains open, or the context isn't cancelled.
+// If this function needs to call `ConvertMp4ToMp3` to convert an mp4 file to mp3, it WILL clean up the temporary mp3 file that it creates and uses for processing.
+// As a result, the management of the files are left to the caller of `ClientSession.Play`.
 //
 // Parameters:
 //   - ctx: the context to listen for cancellation signals on. if the context is cancelled, this function will kill the ffmpeg process.
@@ -233,6 +247,9 @@ func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []b
 		defer ffmpegCmd.Process.Release()
 		defer closeFunc()
 		defer closeOutputChan()
+		if tempPath != "" {
+			defer os.Remove(tempPath)
+		}
 
 		for {
 			select {

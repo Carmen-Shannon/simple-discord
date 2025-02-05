@@ -61,3 +61,6 @@
 
 ## [v0.6.6]
 - Fixed an issue with the `AudioPlayer` hanging when the `audioResource` failed to mux.
+
+## [v0.6.7]
+- Fixed an issue regarding the temp directory and managing files.
