@@ -233,9 +233,6 @@ func ConvertFileToPCM(ctx context.Context, inputPath string, outputChan chan []b
 		defer ffmpegCmd.Process.Release()
 		defer closeFunc()
 		defer closeOutputChan()
-		if tempPath != "" {
-			defer os.Remove(tempPath)
-		}
 
 		for {
 			select {
