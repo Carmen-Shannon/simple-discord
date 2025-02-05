@@ -55,3 +55,6 @@
 
 ## [v0.6.4]
 - Fixed the `ClientSession.Play` call not properly exiting the audio player if ffmpeg fails.
+
+## [v0.6.5]
+- Fixed the `ffmpeg` functions deleting the original source audio files.
